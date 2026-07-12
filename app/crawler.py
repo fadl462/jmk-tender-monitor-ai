@@ -51,18 +51,17 @@ SECTOR_KEYWORDS = {
     "WASH": ["wash", "water suppl", "sanitation", "hygiene", "borehole", "latrine", "sewage", "waste management"],
 }
 
-JOB_ROLE_KEYWORDS = [
-    "consultant", "consultancy", "researcher", "research associate", "research fellow",
-    "monitoring and evaluation", "m&e", "m & e", "evaluation", "evaluator", "assessment",
-    "survey", "terms of reference", " tor ", "feasibility study", "impact assessment",
-    "technical assistance", "data collection", "enumerator", "advisor", "advisory",
-    "technical advisor", "programme officer", "project officer", "coordinator",
-]
-
-TENDER_ROLE_KEYWORDS = [
-    "tender", "rfp", "request for proposal", "eoi", "expression of interest",
-    "invitation to tender", "procurement", "call for proposals", "terms of reference",
-    " tor ", "invitation for bids", "request for quotation", "rfq",
+RESEARCH_CONSULTANCY_KEYWORDS = [
+    # study/engagement types — the actual work JMK bids for as a firm
+    "baseline", "endline", "midline", "mid-term review", "mid term review", "midterm review",
+    "impact assessment", "impact evaluation", "final evaluation", "terminal evaluation",
+    "summative evaluation", "formative evaluation", "situational analysis", "needs assessment",
+    "feasibility study", "evaluation of", "review of the", "assessment of the", "research study",
+    # procurement/consultancy-call language — signals a firm can bid, not an employee post
+    "consultant", "consultancy", "consulting firm", "call for consultancy", "expression of interest",
+    "request for proposal", "terms of reference", " tor ", "invitation to tender", "rfp",
+    "eoi", "procurement", "tender", "invitation for bids", "request for quotation", "rfq",
+    "technical assistance", "survey", "data collection", "monitoring and evaluation", "m&e",
 ]
 
 NEGATIVE_KEYWORDS = [
@@ -70,6 +69,10 @@ NEGATIVE_KEYWORDS = [
     "sales executive", "sales representative", "cashier", "electrician", "plumber",
     "chef", "hospitality", "housekeeping", "barista", "mechanic", "dispatch rider",
     "massage therapist", "class teacher", "shs teacher",
+    # individual staff/employment postings — JMK bids as a firm, not as a job applicant
+    "officer", "coordinator", "manager", "assistant", "director", "internship", " intern ", "intern,",
+    "trainee", "volunteer", "permanent staff", "permanent position", "full-time", "full time",
+    "employee", "graduate trainee", "vacancy for staff", "staff member", "line manager",
 ]
 
 MIN_TITLE_LEN = 12
@@ -166,7 +169,9 @@ def score_text(role_text, sector_text, role_keywords):
         if neg in t_role:
             return 0, "", "Filtered out — looks unrelated to JMK's research/consultancy scope."
 
-    matched_roles = [kw for kw in role_keywords if kw.strip() in t_role]
+    matched_roles = [kw for kw in role_keywords if kw in t_role]
+    if not matched_roles:
+        return 0, "", ""
     role_score = min(70, 45 * len(matched_roles))
 
     best_sector, best_count = "", 0
@@ -182,7 +187,7 @@ def score_text(role_text, sector_text, role_keywords):
 
     bits = []
     if matched_roles:
-        bits.append(f"matches role terms ({', '.join(matched_roles[:2])})")
+        bits.append(f"matches role terms ({', '.join(kw.strip() for kw in matched_roles[:2])})")
     if best_sector:
         bits.append(f"fits {best_sector}")
     reason = "; ".join(bits) if bits else "Keyword match."
@@ -224,7 +229,7 @@ def crawl_tenders(db: Session, new_items: list):
         print(f"[tenders] Checking {source['name']}...")
         html = fetch_html(source["url"])
         for c in extract_candidates(html, source["url"]):
-            score, sector, reason = score_text(c["title"], c["title"] + " " + c["context"], TENDER_ROLE_KEYWORDS)
+            score, sector, reason = score_text(c["title"], c["title"] + " " + c["context"], RESEARCH_CONSULTANCY_KEYWORDS)
             if score < settings.MIN_MATCH_SCORE:
                 continue
             item_id = item_hash("tender", source["name"], c["title"])
@@ -248,7 +253,7 @@ def crawl_jobs(db: Session, new_items: list):
         print(f"[jobs:ghana] Checking {source['name']}...")
         html = fetch_html(source["url"])
         for c in extract_candidates(html, source["url"]):
-            score, sector, reason = score_text(c["title"], c["title"] + " " + c["context"], JOB_ROLE_KEYWORDS)
+            score, sector, reason = score_text(c["title"], c["title"] + " " + c["context"], RESEARCH_CONSULTANCY_KEYWORDS)
             if score < settings.MIN_MATCH_SCORE:
                 continue
             ghana_qualifying += 1
@@ -274,7 +279,7 @@ def crawl_jobs(db: Session, new_items: list):
             print(f"[jobs:intl] Checking {source['name']}...")
             html = fetch_html(source["url"])
             for c in extract_candidates(html, source["url"]):
-                score, sector, reason = score_text(c["title"], c["title"] + " " + c["context"], JOB_ROLE_KEYWORDS)
+                score, sector, reason = score_text(c["title"], c["title"] + " " + c["context"], RESEARCH_CONSULTANCY_KEYWORDS)
                 if score < settings.MIN_MATCH_SCORE:
                     continue
                 item_id = item_hash("job", source["name"], c["title"])
