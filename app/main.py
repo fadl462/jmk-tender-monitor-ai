@@ -1,12 +1,17 @@
+import os
+import time
+import uuid
+import threading
+
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.middleware.cors import CORSMiddleware
-import os
 
 from .database import Base, engine
 from .routes import opportunities, board, crawl, assistant
 from .crawler import SECTORS
+from .config import settings
 
 Base.metadata.create_all(bind=engine)
 
@@ -38,4 +43,7 @@ def healthz():
 
 @app.get("/")
 def dashboard(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request, "sectors": SECTORS, "statuses": STATUSES})
+    return templates.TemplateResponse("index.html", {
+        "request": request, "sectors": SECTORS, "statuses": STATUSES,
+        "cron_secret": settings.CRON_SECRET,
+    })
