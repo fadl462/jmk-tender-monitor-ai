@@ -12,6 +12,7 @@ class Settings:
     SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "")
     DIGEST_FROM = os.environ.get("DIGEST_FROM", "")
     DIGEST_RECIPIENTS = os.environ.get("DIGEST_RECIPIENTS", "")
+    BREVO_API_KEY = os.environ.get("BREVO_API_KEY", "")
 
     CRON_SECRET = os.environ.get("CRON_SECRET", "")
 
