@@ -127,7 +127,7 @@ async function loadDashboard(){
     <div class="kpi-card clickable" data-quick="all"><div class="num">${stats.totalOpportunities ?? 0}</div><div class="lbl">Opportunities found</div></div>
     <div class="kpi-card orange clickable" data-quick="highPriority"><div class="num">${stats.highPriority ?? 0}</div><div class="lbl">High priority</div></div>
     <div class="kpi-card orange clickable" data-quick="closing48h"><div class="num">${stats.closingIn48h ?? 0}</div><div class="lbl">Closing in 48h</div></div>
-    <div class="kpi-card clickable" data-quick="all"><div class="num">${stats.activeDonors ?? 0}</div><div class="lbl">Active donors</div></div>
+    <div class="kpi-card clickable" data-quick="hasDonor"><div class="num">${stats.activeDonors ?? 0}</div><div class="lbl">Active donors</div></div>
     <div class="kpi-card clickable" data-quick="all"><div class="num">${stats.averageMatch ?? 0}%</div><div class="lbl">Avg. match score</div></div>
   `;
   document.querySelectorAll('#kpiGrid .kpi-card').forEach(card => {
@@ -141,10 +141,10 @@ async function loadDashboard(){
   document.getElementById('scanSummary').textContent =
     `Scanned ${totalSources} sources and found ${stats.totalOpportunities ?? 0} opportunities matching JMK's scope.`;
 
-  buildInsights(stats);
-  buildSectorChart(stats.sectorBreakdown || {});
-  buildTopDonors(stats.topDonors || []);
-  loadCrawlStatus('scanStatusMini');
+  try{ buildInsights(stats); }catch(e){ console.error('insights failed', e); }
+  try{ buildSectorChart(stats.sectorBreakdown || {}); }catch(e){ console.error('sector chart failed', e); }
+  try{ buildTopDonors(stats.topDonors || []); }catch(e){ console.error('top donors failed', e); }
+  try{ await loadCrawlStatus('scanStatusMini'); }catch(e){ console.error('scan status failed', e); }
 
   try{
     dashboardOpportunities = await fetch('/api/opportunities').then(r => r.json());
@@ -171,6 +171,12 @@ function buildSectorChart(breakdown){
   const data = Object.values(breakdown);
   const colors = ['#283088','#F06020','#2E6B4F','#6B4FA0','#B0472E','#1D6E8F','#9B9FC0','#C23B23'];
   const ctx = document.getElementById('sectorChart');
+  if(typeof Chart === 'undefined'){
+    document.getElementById('sectorLegend').innerHTML = labels.length
+      ? labels.map((l,i) => `<div class="legend-row"><span>${escapeHtml(l)}</span><span class="amt">${data[i]}</span></div>`).join('')
+      : '<div class="empty" style="padding:10px;">No sector data yet.</div>';
+    return;
+  }
   if(sectorChartInstance) sectorChartInstance.destroy();
   if(labels.length === 0){
     document.getElementById('sectorLegend').innerHTML = '<div class="empty" style="padding:10px;">No sector data yet.</div>';
@@ -273,6 +279,7 @@ const QUICK_FILTER_LABELS = {
   all: null,
   highPriority: 'High priority (80%+ match)',
   closing48h: 'Closing within 48 hours',
+  hasDonor: 'Has an identified donor/employer',
 };
 
 function renderQuickFilterChip(){
@@ -299,6 +306,7 @@ async function loadAllOpportunities(){
     const dl = daysLeft(o.deadline);
     return dl !== null && dl >= 0 && dl <= 2;
   });
+  if(quickFilter === 'hasDonor') items = items.filter(o => !!o.org);
   renderQuickFilterChip();
   const container = document.getElementById('allOpportunities');
   container.innerHTML = items.length
