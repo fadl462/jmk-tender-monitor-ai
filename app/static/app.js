@@ -373,6 +373,27 @@ async function handleDelete(){
 }
 
 // ---------- AI assistant ----------
+const SUGGESTED_QUESTIONS = [
+  "Which tenders close this week?",
+  "Show me jobs closing this month",
+  "WASH opportunities",
+  "Education opportunities",
+  "Governance opportunities",
+  "Gender and social inclusion opportunities",
+  "Agricultural sector tenders",
+  "Show me the best matches",
+];
+function renderSuggestionChips(){
+  const el = document.getElementById('suggestionChips');
+  if(!el) return;
+  el.innerHTML = SUGGESTED_QUESTIONS.map(q => `<button class="suggestion-chip" type="button">${escapeHtml(q)}</button>`).join('');
+  el.querySelectorAll('.suggestion-chip').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.getElementById('assistantInput').value = btn.textContent;
+      askAssistant();
+    });
+  });
+}
 function addChatMsg(text, cls){
   const chat = document.getElementById('assistantChat');
   const div = document.createElement('div');
@@ -514,5 +535,6 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('viewAllBtn').addEventListener('click', () => switchSection('opportunities'));
 
   renderSources();
+  renderSuggestionChips();
   loadDashboard();
 });
