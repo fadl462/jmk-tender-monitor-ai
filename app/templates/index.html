@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JMK Tender Monitor AI</title>
+<link rel="icon" type="image/png" href="/static/jmk-logo.png">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/tabler-icons/3.44.0/tabler-icons.min.css">
+<link rel="stylesheet" href="/static/style.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.3/chart.umd.min.js"></script>
+</head>
+<body>
+
+<div class="shell">
+
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <span class="logo-chip"><img src="/static/jmk-logo.png" alt="JMK"></span>
+      <div>
+        <div class="brand-name">JMK Tender<br>Monitor AI</div>
+      </div>
+    </div>
+    <nav class="nav">
+      <button class="nav-item active" data-section="dashboard">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
+        Dashboard
+      </button>
+      <button class="nav-item" data-section="opportunities">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+        Opportunities
+      </button>
+      <button class="nav-item" data-section="pipeline">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h4l3-9 4 18 3-9h4"/></svg>
+        Pipeline
+      </button>
+      <button class="nav-item" data-section="assistant">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+        AI Assistant
+      </button>
+      <button class="nav-item" data-section="sources">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.7 3.8 6 3.8 9s-1.3 6.3-3.8 9c-2.5-2.7-3.8-6-3.8-9s1.3-6.3 3.8-9z"/></svg>
+        Sources
+      </button>
+      <button class="nav-item" data-section="settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        Settings
+      </button>
+    </nav>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <div class="topbar-title">
+        <h1 id="sectionTitle">Dashboard</h1>
+        <p id="sectionSubtitle">AI-powered consultancy opportunity intelligence</p>
+      </div>
+      <div class="topbar-actions">
+        <a class="link-btn" href="https://www.jmkconsultinggroup.com" target="_blank" rel="noopener">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.7 3.8 6 3.8 9s-1.3 6.3-3.8 9c-2.5-2.7-3.8-6-3.8-9s1.3-6.3 3.8-9z"/></svg>
+          Website
+        </a>
+        <a class="link-btn orange" href="https://www.jmkconsultinggroup.com/news" target="_blank" rel="noopener">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19V7a2 2 0 0 1 2-2h9l5 5v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><path d="M15 5v5h5M8 13h8M8 17h5"/></svg>
+          Updates
+        </a>
+        <button class="icon-btn" id="themeToggle" title="Switch theme">
+          <svg id="themeIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <main class="content">
+
+      <!-- DASHBOARD -->
+      <section id="section-dashboard" class="section active">
+        <div class="greeting-row">
+          <div>
+            <p class="greeting-eyebrow" id="greetingText">Good morning!</p>
+            <h2 class="greeting-title">Today's Opportunity Intelligence</h2>
+            <p class="hint" id="scanSummary">—</p>
+          </div>
+          <div class="today-date" id="todayDate"></div>
+        </div>
+
+        <div class="kpi-grid five" id="kpiGrid"></div>
+
+        <div class="dashboard-grid">
+          <div>
+            <div class="panel">
+              <div class="toolbar">
+                <input type="text" id="dashSearch" placeholder="Search opportunities, keywords, organizations...">
+                <select id="dashSort">
+                  <option value="match">Sort: Best match</option>
+                  <option value="deadline">Sort: Deadline soonest</option>
+                </select>
+              </div>
+              <div id="topOpportunities" class="opp-grid"></div>
+              <div style="text-align:center;margin-top:14px;">
+                <button class="btn secondary" id="viewAllBtn">View all opportunities →</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="side-col">
+            <div class="panel insights-panel">
+              <h2><i class="ti ti-sparkles" aria-hidden="true"></i> AI Insights</h2>
+              <p class="hint" id="insightsText">—</p>
+            </div>
+
+            <div class="panel">
+              <h2>Opportunities by Sector</h2>
+              <div class="donut-wrap">
+                <canvas id="sectorChart" width="140" height="140"></canvas>
+              </div>
+              <div id="sectorLegend" class="legend"></div>
+            </div>
+
+            <div class="panel">
+              <h2>Top Active Donors</h2>
+              <div id="topDonors"></div>
+            </div>
+
+            <div class="panel">
+              <h2>Scan Status</h2>
+              <div id="scanStatusMini" class="status-box"></div>
+              <button class="btn accent" id="runScanMiniBtn" style="width:100%;margin-top:10px;">Run Scan Now</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="trust-bar">
+          <div><i class="ti ti-shield-check" aria-hidden="true"></i> <div><strong>17 sources monitored</strong><br>Ghana first, international fallback</div></div>
+          <div><i class="ti ti-robot" aria-hidden="true"></i> <div><strong>Rule-based matching</strong><br>Scores opportunities against JMK's sectors</div></div>
+          <div><i class="ti ti-mail" aria-hidden="true"></i> <div><strong>Daily email digest</strong><br>Delivered every morning</div></div>
+          <div><i class="ti ti-lock" aria-hidden="true"></i> <div><strong>No paid AI</strong><br>Zero API cost, ever</div></div>
+        </div>
+      </section>
+
+      <!-- OPPORTUNITIES -->
+      <section id="section-opportunities" class="section">
+        <div class="panel">
+          <div class="toolbar">
+            <select id="filterKind"><option value="">All types</option><option value="tender">Tenders</option><option value="job">Jobs</option></select>
+            <select id="filterSector"></select>
+            <button class="btn accent" id="refreshOppBtn">Refresh</button>
+          </div>
+          <div id="allOpportunities" class="opp-grid"></div>
+        </div>
+      </section>
+
+      <!-- PIPELINE -->
+      <section id="section-pipeline" class="section">
+        <div class="panel">
+          <div class="toolbar">
+            <select id="pipelineFilterStatus"></select>
+            <div class="spacer"></div>
+            <button class="btn accent" id="addPipelineBtn">+ Add Manually</button>
+          </div>
+          <div id="pipelineList"></div>
+        </div>
+      </section>
+
+      <!-- AI ASSISTANT -->
+      <section id="section-assistant" class="section">
+        <div class="panel assistant-panel">
+          <h2>Ask about your opportunities</h2>
+          <p class="hint">Rule-based smart filtering over the crawled opportunity list — try "which tenders close this week" or "show me WASH opportunities". This runs locally, no paid AI call.</p>
+          <div class="assistant-chat" id="assistantChat"></div>
+          <div class="assistant-input-row">
+            <input type="text" id="assistantInput" placeholder="Ask a question about opportunities...">
+            <button class="btn accent" id="assistantSendBtn">Ask</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- SOURCES -->
+      <section id="section-sources" class="section">
+        <div class="panel">
+          <h2>Source Watchlist</h2>
+          <p class="hint">Checked automatically every morning — Ghana platforms first, international ones only as fallback.</p>
+          <div id="sourceList"></div>
+        </div>
+      </section>
+
+      <!-- SETTINGS -->
+      <section id="section-settings" class="section">
+        <div class="panel">
+          <h2>Crawl Control</h2>
+          <p class="hint">Trigger a check manually, or see when the last automatic run happened.</p>
+          <div id="crawlStatusBox" class="status-box"></div>
+          <button class="btn accent" id="triggerCrawlBtn" style="margin-top:12px;">Run Crawl Now</button>
+        </div>
+        <div class="panel">
+          <h2>About this platform</h2>
+          <p class="hint">JMK Tender Monitor AI uses free, rule-based matching — not a paid language model — to find and
+          score tenders and consultancy jobs against JMK's sectors of work. Ghana job platforms are always checked
+          first; international platforms are only checked as a fallback. Treat results as a shortlist to review, not
+          a guarantee — always confirm details on the original listing.</p>
+        </div>
+      </section>
+
+    </main>
+  </div>
+</div>
+
+<!-- Add/Edit pipeline item slide-over -->
+<div id="formOverlay"></div>
+<div id="formPanel">
+  <button class="close-x" id="closeForm">&times;</button>
+  <h2 id="formTitle">Add to Pipeline</h2>
+  <form id="pipelineForm">
+    <div class="field"><label>Title</label><input type="text" id="f_title" required></div>
+    <div class="field"><label>Funder / Client</label><input type="text" id="f_funder"></div>
+    <div class="field"><label>Sector</label><select id="f_sector"></select></div>
+    <div class="field"><label>Status</label><select id="f_status"></select></div>
+    <div class="field"><label>Deadline</label><input type="date" id="f_deadline"></div>
+    <div class="field"><label>Value / budget</label><input type="text" id="f_value"></div>
+    <div class="field"><label>Reference number</label><input type="text" id="f_ref"></div>
+    <div class="field"><label>Link</label><input type="url" id="f_link"></div>
+    <div class="field"><label>Notes</label><textarea id="f_notes"></textarea></div>
+    <div class="form-actions">
+      <button type="submit" class="btn accent">Save</button>
+      <button type="button" class="btn secondary" id="cancelForm">Cancel</button>
+      <button type="button" class="btn danger" id="deleteBtn" style="display:none;margin-left:auto;">Delete</button>
+    </div>
+  </form>
+</div>
+
+<script>
+  window.JMK_SECTORS = {{ sectors | tojson }};
+  window.JMK_STATUSES = {{ statuses | tojson }};
+</script>
+<script src="/static/app.js"></script>
+</body>
+</html>
