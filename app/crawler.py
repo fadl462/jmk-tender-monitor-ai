@@ -142,18 +142,36 @@ def find_nearby_deadline(context_text):
     return ""
 
 
-def score_text(text, role_keywords):
-    t = text.lower()
+ORG_SPLIT_PATTERNS = [" - ", " – ", " — ", " | ", " at "]
+
+
+def extract_org_from_title(title):
+    """Best-effort: many job/tender titles follow 'Role - Organization' or
+    'Role at Organization' patterns. Not reliable for every source, but
+    catches a meaningful share without needing a per-site scraper."""
+    for pat in ORG_SPLIT_PATTERNS:
+        if pat in title:
+            parts = title.rsplit(pat, 1)
+            if len(parts) == 2 and 2 <= len(parts[1].strip()) <= 60:
+                candidate = parts[1].strip()
+                if any(c.isalpha() for c in candidate):
+                    return candidate
+    return ""
+
+
+def score_text(role_text, sector_text, role_keywords):
+    t_role = role_text.lower()
+    t_sector = sector_text.lower()
     for neg in NEGATIVE_KEYWORDS:
-        if neg in t:
+        if neg in t_role:
             return 0, "", "Filtered out — looks unrelated to JMK's research/consultancy scope."
 
-    matched_roles = [kw for kw in role_keywords if kw.strip() in t]
+    matched_roles = [kw for kw in role_keywords if kw.strip() in t_role]
     role_score = min(70, 45 * len(matched_roles))
 
     best_sector, best_count = "", 0
     for sector, kws in SECTOR_KEYWORDS.items():
-        count = sum(1 for kw in kws if kw in t)
+        count = sum(1 for kw in kws if kw in t_sector)
         if count > best_count:
             best_sector, best_count = sector, count
     sector_score = min(40, 20 * best_count)
@@ -206,14 +224,14 @@ def crawl_tenders(db: Session, new_items: list):
         print(f"[tenders] Checking {source['name']}...")
         html = fetch_html(source["url"])
         for c in extract_candidates(html, source["url"]):
-            score, sector, reason = score_text(c["title"], TENDER_ROLE_KEYWORDS)
+            score, sector, reason = score_text(c["title"], c["title"] + " " + c["context"], TENDER_ROLE_KEYWORDS)
             if score < settings.MIN_MATCH_SCORE:
                 continue
             item_id = item_hash("tender", source["name"], c["title"])
             if _exists(db, item_id):
                 continue
             record = models.Opportunity(
-                id=item_id, kind="tender", title=c["title"], org="",
+                id=item_id, kind="tender", title=c["title"], org=extract_org_from_title(c["title"]),
                 sector=sector, deadline=find_nearby_deadline(c["context"]),
                 match_score=score, match_reason=reason,
                 source=source["name"], source_url=c["url"],
@@ -230,7 +248,7 @@ def crawl_jobs(db: Session, new_items: list):
         print(f"[jobs:ghana] Checking {source['name']}...")
         html = fetch_html(source["url"])
         for c in extract_candidates(html, source["url"]):
-            score, sector, reason = score_text(c["title"], JOB_ROLE_KEYWORDS)
+            score, sector, reason = score_text(c["title"], c["title"] + " " + c["context"], JOB_ROLE_KEYWORDS)
             if score < settings.MIN_MATCH_SCORE:
                 continue
             ghana_qualifying += 1
@@ -238,7 +256,7 @@ def crawl_jobs(db: Session, new_items: list):
             if _exists(db, item_id):
                 continue
             record = models.Opportunity(
-                id=item_id, kind="job", title=c["title"], org="", location="Ghana",
+                id=item_id, kind="job", title=c["title"], org=extract_org_from_title(c["title"]), location="Ghana",
                 sector=sector, deadline=find_nearby_deadline(c["context"]),
                 match_score=score, match_reason=reason,
                 source=source["name"], source_url=c["url"], source_tier="Ghana",
@@ -256,14 +274,14 @@ def crawl_jobs(db: Session, new_items: list):
             print(f"[jobs:intl] Checking {source['name']}...")
             html = fetch_html(source["url"])
             for c in extract_candidates(html, source["url"]):
-                score, sector, reason = score_text(c["title"], JOB_ROLE_KEYWORDS)
+                score, sector, reason = score_text(c["title"], c["title"] + " " + c["context"], JOB_ROLE_KEYWORDS)
                 if score < settings.MIN_MATCH_SCORE:
                     continue
                 item_id = item_hash("job", source["name"], c["title"])
                 if _exists(db, item_id):
                     continue
                 record = models.Opportunity(
-                    id=item_id, kind="job", title=c["title"], org="", location="",
+                    id=item_id, kind="job", title=c["title"], org=extract_org_from_title(c["title"]), location="",
                     sector=sector, deadline=find_nearby_deadline(c["context"]),
                     match_score=score, match_reason=reason,
                     source=source["name"], source_url=c["url"], source_tier="International",
@@ -335,16 +353,11 @@ def send_email(html_body):
     if not recipients:
         return False, "DIGEST_RECIPIENTS not set"
 
-    # Some hosts (Render included) don't route IPv6 outbound, but Gmail's
-    # hostname resolves to an IPv6 address as well as IPv4 — force IPv4-only
-    # resolution just for this connection to avoid "Network is unreachable".
     original_getaddrinfo = socket.getaddrinfo
 
     def ipv4_only(host, port, family=0, type=0, proto=0, flags=0):
         return original_getaddrinfo(host, port, socket.AF_INET, type, proto, flags)
 
-    # Ghana is UTC+0 year-round (no daylight saving), so the server's UTC
-    # hour is also the Accra hour — safe to use directly for the AM/PM label.
     hour = datetime.utcnow().hour
     run_label = "Morning" if hour < 12 else "Afternoon"
 
