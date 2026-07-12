@@ -23,6 +23,7 @@ const SOURCES = [
 
 let editingId = null;
 let pipelineItems = [];
+let quickFilter = 'all';
 
 function escapeHtml(s){
   return (s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -123,12 +124,18 @@ async function loadDashboard(){
   }catch(e){ console.error(e); }
 
   document.getElementById('kpiGrid').innerHTML = `
-    <div class="kpi-card"><div class="num">${stats.totalOpportunities ?? 0}</div><div class="lbl">Opportunities found</div></div>
-    <div class="kpi-card orange"><div class="num">${stats.highPriority ?? 0}</div><div class="lbl">High priority</div></div>
-    <div class="kpi-card orange"><div class="num">${stats.closingIn48h ?? 0}</div><div class="lbl">Closing in 48h</div></div>
-    <div class="kpi-card"><div class="num">${stats.activeDonors ?? 0}</div><div class="lbl">Active donors</div></div>
-    <div class="kpi-card"><div class="num">${stats.averageMatch ?? 0}%</div><div class="lbl">Avg. match score</div></div>
+    <div class="kpi-card clickable" data-quick="all"><div class="num">${stats.totalOpportunities ?? 0}</div><div class="lbl">Opportunities found</div></div>
+    <div class="kpi-card orange clickable" data-quick="highPriority"><div class="num">${stats.highPriority ?? 0}</div><div class="lbl">High priority</div></div>
+    <div class="kpi-card orange clickable" data-quick="closing48h"><div class="num">${stats.closingIn48h ?? 0}</div><div class="lbl">Closing in 48h</div></div>
+    <div class="kpi-card clickable" data-quick="all"><div class="num">${stats.activeDonors ?? 0}</div><div class="lbl">Active donors</div></div>
+    <div class="kpi-card clickable" data-quick="all"><div class="num">${stats.averageMatch ?? 0}%</div><div class="lbl">Avg. match score</div></div>
   `;
+  document.querySelectorAll('#kpiGrid .kpi-card').forEach(card => {
+    card.addEventListener('click', () => {
+      quickFilter = card.dataset.quick;
+      switchSection('opportunities');
+    });
+  });
 
   const totalSources = 9 + 8;
   document.getElementById('scanSummary').textContent =
@@ -262,16 +269,40 @@ function wireOppCardButtons(container){
 }
 
 // ---------- opportunities (full list) ----------
+const QUICK_FILTER_LABELS = {
+  all: null,
+  highPriority: 'High priority (80%+ match)',
+  closing48h: 'Closing within 48 hours',
+};
+
+function renderQuickFilterChip(){
+  const el = document.getElementById('quickFilterChip');
+  const label = QUICK_FILTER_LABELS[quickFilter];
+  if(!label){ el.innerHTML = ''; return; }
+  el.innerHTML = `<div class="quick-filter-chip">Filtered: ${escapeHtml(label)} <button type="button" id="clearQuickFilter">✕</button></div>`;
+  document.getElementById('clearQuickFilter').addEventListener('click', () => {
+    quickFilter = 'all';
+    loadAllOpportunities();
+  });
+}
+
 async function loadAllOpportunities(){
   const kind = document.getElementById('filterKind').value;
   const sector = document.getElementById('filterSector').value;
   const params = new URLSearchParams();
   if(kind) params.set('kind', kind);
-  const items = await fetch('/api/opportunities?' + params.toString()).then(r => r.json());
-  const filtered = sector ? items.filter(o => o.sector === sector) : items;
+  let items = await fetch('/api/opportunities?' + params.toString()).then(r => r.json());
+  if(sector) items = items.filter(o => o.sector === sector);
+  if(quickFilter === 'highPriority') items = items.filter(o => o.match_score >= 80);
+  if(quickFilter === 'closing48h') items = items.filter(o => {
+    if(!o.deadline) return false;
+    const dl = daysLeft(o.deadline);
+    return dl !== null && dl >= 0 && dl <= 2;
+  });
+  renderQuickFilterChip();
   const container = document.getElementById('allOpportunities');
-  container.innerHTML = filtered.length
-    ? filtered.map(renderOppCard).join('')
+  container.innerHTML = items.length
+    ? items.map(renderOppCard).join('')
     : '<div class="empty">No opportunities match these filters yet.</div>';
   wireOppCardButtons(container);
 }
@@ -499,13 +530,28 @@ async function pollUntilDone(btnId, statusTargetId){
   }
 }
 
+async function clearAndRescan(){
+  const btn = document.getElementById('clearRescanBtn');
+  if(!confirm('This deletes all currently crawled opportunities (not your Pipeline items) and starts a fresh scan. Continue?')) return;
+  btn.disabled = true;
+  btn.textContent = 'Clearing...';
+  const token = window.JMK_CRON_SECRET ? `?token=${encodeURIComponent(window.JMK_CRON_SECRET)}` : '';
+  await fetch('/api/opportunities' + token, { method: 'DELETE' });
+  btn.textContent = 'Clear Old Data & Rescan';
+  btn.disabled = false;
+  triggerCrawl('triggerCrawlBtn', 'crawlStatusBox');
+}
+
 // ---------- init ----------
 document.addEventListener('DOMContentLoaded', () => {
   applyTheme(localStorage.getItem('jmk-theme') || 'light');
   document.getElementById('themeToggle').addEventListener('click', toggleTheme);
 
   document.querySelectorAll('.nav-item').forEach(btn => {
-    btn.addEventListener('click', () => switchSection(btn.dataset.section));
+    btn.addEventListener('click', () => {
+      if(btn.dataset.section === 'opportunities') quickFilter = 'all';
+      switchSection(btn.dataset.section);
+    });
   });
 
   populateSelect(document.getElementById('filterSector'), SECTORS, true);
@@ -529,6 +575,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('assistantInput').addEventListener('keydown', e => { if(e.key === 'Enter') askAssistant(); });
 
   document.getElementById('triggerCrawlBtn').addEventListener('click', () => triggerCrawl('triggerCrawlBtn', 'crawlStatusBox'));
+  document.getElementById('clearRescanBtn').addEventListener('click', clearAndRescan);
   document.getElementById('runScanTopBtn').addEventListener('click', () => triggerCrawl('runScanTopBtn', 'scanStatusMini'));
   document.getElementById('dashSearch').addEventListener('input', renderDashboardOpportunities);
   document.getElementById('dashSort').addEventListener('change', renderDashboardOpportunities);
