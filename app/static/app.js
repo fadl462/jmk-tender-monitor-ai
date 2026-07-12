@@ -442,7 +442,8 @@ async function triggerCrawl(btnId, statusTargetId){
   const btn = document.getElementById(btnId);
   btn.disabled = true;
   btn.textContent = 'Starting...';
-  const res = await fetch('/api/crawl/run', { method: 'POST' }).then(r => r.json());
+  const token = window.JMK_CRON_SECRET ? `?token=${encodeURIComponent(window.JMK_CRON_SECRET)}` : '';
+  const res = await fetch('/api/crawl/run' + token, { method: 'POST' }).then(r => r.json());
   btn.textContent = res.status === 'started' ? 'Crawl running — check back shortly' : 'Run Crawl Now';
   setTimeout(() => { btn.disabled = false; btn.textContent = 'Run Crawl Now'; loadCrawlStatus(statusTargetId); }, 4000);
 }
