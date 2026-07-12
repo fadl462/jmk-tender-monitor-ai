@@ -118,6 +118,11 @@ body{transition:background 0.2s ease, color 0.2s ease;}
 .kpi-card .lbl{font-size:12px;color:var(--ink-soft);margin-top:4px;}
 .kpi-card.orange{border-top-color:var(--orange);}
 .kpi-card.orange .num{color:var(--orange);}
+.kpi-card.clickable{cursor:pointer;transition:transform 0.12s ease, box-shadow 0.12s ease;}
+.kpi-card.clickable:hover{transform:translateY(-2px);box-shadow:0 6px 20px rgba(40,48,136,0.14);}
+.quick-filter-chip{display:inline-flex;align-items:center;gap:8px;background:var(--orange-soft);color:var(--orange);
+  font-size:12.5px;font-weight:600;padding:7px 12px;border-radius:20px;margin-bottom:14px;}
+.quick-filter-chip button{background:none;border:none;color:var(--orange);cursor:pointer;font-weight:700;font-size:13px;padding:0;}
 @media (max-width:900px){.kpi-grid{grid-template-columns:repeat(2,1fr);}}
 
 /* ---------- Panels ---------- */
