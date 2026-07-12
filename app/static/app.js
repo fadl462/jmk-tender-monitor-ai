@@ -130,7 +130,7 @@ async function loadDashboard(){
     <div class="kpi-card"><div class="num">${stats.averageMatch ?? 0}%</div><div class="lbl">Avg. match score</div></div>
   `;
 
-  const totalSources = 9 + 8; // tender portals + Ghana job platforms (always checked)
+  const totalSources = 9 + 8;
   document.getElementById('scanSummary').textContent =
     `Scanned ${totalSources} sources and found ${stats.totalOpportunities ?? 0} opportunities matching JMK's scope.`;
 
@@ -423,12 +423,12 @@ function renderSources(){
 }
 
 // ---------- settings ----------
-async function loadCrawlStatus(targetId){
-  targetId = targetId || 'crawlStatusBox';
+function renderCrawlStatusBox(targetId, s){
   const el = document.getElementById(targetId);
   if(!el) return;
-  const s = await fetch('/api/crawl/status').then(r => r.json());
+  const working = s.state === 'running';
   el.innerHTML = `
+    ${working ? '<div class="agent-working">🔄 Agent is working — checking 17 sources, this can take 1-2 minutes...</div>' : ''}
     <div class="row"><span>State</span><span>${escapeHtml(s.state)}</span></div>
     <div class="row"><span>Tenders in feed</span><span>${s.tenders_in_feed}</span></div>
     <div class="row"><span>Jobs in feed</span><span>${s.jobs_in_feed}</span></div>
@@ -438,14 +438,44 @@ async function loadCrawlStatus(targetId){
     ${s.error ? `<div class="row"><span>Last error</span><span>${escapeHtml(s.error)}</span></div>` : ''}
   `;
 }
+
+async function loadCrawlStatus(targetId){
+  targetId = targetId || 'crawlStatusBox';
+  const s = await fetch('/api/crawl/status').then(r => r.json());
+  renderCrawlStatusBox(targetId, s);
+  return s;
+}
+
 async function triggerCrawl(btnId, statusTargetId){
   const btn = document.getElementById(btnId);
   btn.disabled = true;
-  btn.textContent = 'Starting...';
+  btn.textContent = '🔄 Agent is working...';
   const token = window.JMK_CRON_SECRET ? `?token=${encodeURIComponent(window.JMK_CRON_SECRET)}` : '';
   const res = await fetch('/api/crawl/run' + token, { method: 'POST' }).then(r => r.json());
-  btn.textContent = res.status === 'started' ? 'Crawl running — check back shortly' : 'Run Crawl Now';
-  setTimeout(() => { btn.disabled = false; btn.textContent = 'Run Crawl Now'; loadCrawlStatus(statusTargetId); }, 4000);
+
+  if(res.status !== 'started' && res.status !== 'already running'){
+    btn.disabled = false;
+    btn.textContent = 'Run Crawl Now';
+    alert('Could not start the crawl: ' + (res.error || JSON.stringify(res)));
+    return;
+  }
+
+  pollUntilDone(btnId, statusTargetId);
+}
+
+async function pollUntilDone(btnId, statusTargetId){
+  const btn = document.getElementById(btnId);
+  const s = await loadCrawlStatus(statusTargetId);
+  if(s.state === 'running'){
+    btn.disabled = true;
+    btn.textContent = '🔄 Agent is working...';
+    setTimeout(() => pollUntilDone(btnId, statusTargetId), 3000);
+  } else {
+    btn.disabled = false;
+    btn.textContent = s.error ? 'Run Crawl Now (last run had an error)' : 'Run Crawl Now';
+    const dashSection = document.getElementById('section-dashboard');
+    if(dashSection && dashSection.classList.contains('active')) loadDashboard();
+  }
 }
 
 // ---------- init ----------
