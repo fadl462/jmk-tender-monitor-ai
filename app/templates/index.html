@@ -16,8 +16,8 @@
   <!-- Sidebar -->
   <aside class="sidebar">
     <div class="sidebar-brand">
-      <span class="logo-chip"><img src="/static/jmk-logo.png" alt="JMK"></span>
-      <div class="brand-name">JMK Tender Monitor AI</div>
+      <span class="logo-chip"><img src="/static/jmk-logo.png" alt="JMK Consulting"></span>
+      <div class="brand-name">Tender Monitor AI</div>
     </div>
     <nav class="nav">
       <button class="nav-item active" data-section="dashboard">
@@ -140,6 +140,7 @@
       <!-- OPPORTUNITIES -->
       <section id="section-opportunities" class="section">
         <div class="panel">
+          <div id="quickFilterChip"></div>
           <div class="toolbar">
             <select id="filterKind"><option value="">All types</option><option value="tender">Tenders</option><option value="job">Jobs</option></select>
             <select id="filterSector"></select>
@@ -191,6 +192,7 @@
           <p class="hint">Trigger a check manually, or see when the last automatic run happened.</p>
           <div id="crawlStatusBox" class="status-box"></div>
           <button class="btn accent" id="triggerCrawlBtn" style="margin-top:12px;">Run Crawl Now</button>
+          <button class="btn secondary" id="clearRescanBtn" style="margin-top:8px;">Clear Old Data &amp; Rescan</button>
         </div>
         <div class="panel">
           <h2>About this platform</h2>
