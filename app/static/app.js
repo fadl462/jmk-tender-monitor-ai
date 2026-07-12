@@ -508,7 +508,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('assistantInput').addEventListener('keydown', e => { if(e.key === 'Enter') askAssistant(); });
 
   document.getElementById('triggerCrawlBtn').addEventListener('click', () => triggerCrawl('triggerCrawlBtn', 'crawlStatusBox'));
-  document.getElementById('runScanMiniBtn').addEventListener('click', () => triggerCrawl('runScanMiniBtn', 'scanStatusMini'));
+  document.getElementById('runScanTopBtn').addEventListener('click', () => triggerCrawl('runScanTopBtn', 'scanStatusMini'));
   document.getElementById('dashSearch').addEventListener('input', renderDashboardOpportunities);
   document.getElementById('dashSort').addEventListener('change', renderDashboardOpportunities);
   document.getElementById('viewAllBtn').addEventListener('click', () => switchSection('opportunities'));
