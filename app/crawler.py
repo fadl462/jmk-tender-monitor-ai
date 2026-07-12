@@ -13,13 +13,9 @@ its source so a person makes the final call.
 """
 import re
 import time
-import socket
-import smtplib
 import hashlib
 from datetime import datetime, timedelta
 from urllib.parse import urljoin
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
 
 import requests
 from bs4 import BeautifulSoup
@@ -354,34 +350,43 @@ def build_digest_html(new_items):
 
 
 def send_email(html_body):
+    """Sends the digest via Brevo's HTTPS API instead of raw SMTP.
+
+    Two separate SMTP failures happened on Render's free tier (first an
+    IPv6-routing issue, then a plain connection timeout) — both point at
+    Render's network not reliably allowing outbound SMTP. HTTPS is never
+    blocked (it's exactly what the crawler already uses to fetch every
+    source), so sending the digest as a normal API call over HTTPS sidesteps
+    the whole problem rather than continuing to patch around SMTP quirks.
+    """
     recipients = [r.strip() for r in settings.DIGEST_RECIPIENTS.split(",") if r.strip()]
     if not recipients:
         return False, "DIGEST_RECIPIENTS not set"
-
-    original_getaddrinfo = socket.getaddrinfo
-
-    def ipv4_only(host, port, family=0, type=0, proto=0, flags=0):
-        return original_getaddrinfo(host, port, socket.AF_INET, type, proto, flags)
+    if not settings.BREVO_API_KEY:
+        return False, "BREVO_API_KEY not set"
 
     hour = datetime.utcnow().hour
     run_label = "Morning" if hour < 12 else "Afternoon"
+    sender_email = settings.DIGEST_FROM or settings.SMTP_USER
 
     try:
-        msg = MIMEMultipart("alternative")
-        msg["Subject"] = f"JMK Tender Monitor AI — {run_label} Digest — {time.strftime('%d %b %Y')}"
-        msg["From"] = settings.DIGEST_FROM or settings.SMTP_USER
-        msg["To"] = ", ".join(recipients)
-        msg.attach(MIMEText(html_body, "html"))
-
-        socket.getaddrinfo = ipv4_only
-        try:
-            with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=30) as server:
-                server.starttls()
-                server.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
-                server.sendmail(msg["From"], recipients, msg.as_string())
-        finally:
-            socket.getaddrinfo = original_getaddrinfo
-
+        resp = requests.post(
+            "https://api.brevo.com/v3/smtp/email",
+            headers={
+                "api-key": settings.BREVO_API_KEY,
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+            },
+            json={
+                "sender": {"email": sender_email, "name": "JMK Tender Monitor AI"},
+                "to": [{"email": r} for r in recipients],
+                "subject": f"JMK Tender Monitor AI — {run_label} Digest — {time.strftime('%d %b %Y')}",
+                "htmlContent": html_body,
+            },
+            timeout=30,
+        )
+        if resp.status_code >= 400:
+            return False, f"Brevo API error {resp.status_code}: {resp.text[:200]}"
         return True, f"Emailed {len(recipients)} recipient(s)"
     except Exception as e:
         return False, str(e)
