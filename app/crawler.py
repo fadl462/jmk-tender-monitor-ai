@@ -159,6 +159,14 @@ def extract_org_from_title(title):
 
 
 def score_text(role_text, sector_text, role_keywords):
+    """Weighted scoring, three components (geography added by the caller,
+    which knows the source's country tier):
+      - Consultancy fit  (up to 60): does this read like firm-level TOR/RFP
+        language rather than a staff job posting?
+      - Sector fit       (up to 25): which of JMK's 8 sectors, if any?
+      - Geography        (up to 15): added by crawl_tenders/crawl_jobs,
+        since only they know whether the source is Ghana-tier.
+    """
     t_role = role_text.lower()
     t_sector = sector_text.lower()
     for neg in NEGATIVE_KEYWORDS:
@@ -168,26 +176,36 @@ def score_text(role_text, sector_text, role_keywords):
     matched_roles = [kw for kw in role_keywords if kw in t_role]
     if not matched_roles:
         return 0, "", ""
-    role_score = min(70, 45 * len(matched_roles))
+    consultancy_score = min(60, 30 * len(matched_roles))
 
     best_sector, best_count = "", 0
     for sector, kws in SECTOR_KEYWORDS.items():
         count = sum(1 for kw in kws if kw in t_sector)
         if count > best_count:
             best_sector, best_count = sector, count
-    sector_score = min(40, 20 * best_count)
+    sector_score = min(25, 13 * best_count)
 
-    score = min(100, role_score + sector_score)
+    score = min(85, consultancy_score + sector_score)  # geography (0-15) added by caller
     if score == 0:
         return 0, "", ""
 
     bits = []
     if matched_roles:
-        bits.append(f"matches role terms ({', '.join(kw.strip() for kw in matched_roles[:2])})")
+        bits.append(f"matches consultancy terms ({', '.join(kw.strip() for kw in matched_roles[:2])})")
     if best_sector:
         bits.append(f"fits {best_sector}")
     reason = "; ".join(bits) if bits else "Keyword match."
     return score, best_sector, reason
+
+
+def geography_bonus(text, is_ghana_tier):
+    """Up to 15 points for Ghana relevance — either the source itself is a
+    Ghana-tier platform, or the listing text explicitly mentions Ghana."""
+    if is_ghana_tier:
+        return 15
+    if "ghana" in text.lower():
+        return 12
+    return 0
 
 
 def extract_candidates(html, base_url):
@@ -220,12 +238,17 @@ def _exists(db: Session, item_id: str) -> bool:
     return db.query(models.Opportunity.id).filter(models.Opportunity.id == item_id).first() is not None
 
 
-def crawl_tenders(db: Session, new_items: list):
+def crawl_tenders(db: Session, new_items: list, source_stats: dict):
     for source in TENDER_SOURCES:
         print(f"[tenders] Checking {source['name']}...")
         html = fetch_html(source["url"])
+        stat = {"last_checked": datetime.utcnow().isoformat(), "new_today": 0, "status": "ok" if html else "unreachable"}
         for c in extract_candidates(html, source["url"]):
-            score, sector, reason = score_text(c["title"], c["title"] + " " + c["context"], RESEARCH_CONSULTANCY_KEYWORDS)
+            base_score, sector, reason = score_text(c["title"], c["title"] + " " + c["context"], RESEARCH_CONSULTANCY_KEYWORDS)
+            if base_score == 0:
+                continue
+            geo = geography_bonus(c["title"] + " " + c["context"], is_ghana_tier=False)
+            score = min(100, base_score + geo)
             if score < settings.MIN_MATCH_SCORE:
                 continue
             item_id = item_hash("tender", source["name"], c["title"])
@@ -239,17 +262,24 @@ def crawl_tenders(db: Session, new_items: list):
             )
             db.add(record)
             new_items.append(record)
+            stat["new_today"] += 1
+        source_stats[source["name"]] = stat
         time.sleep(0.3)
     db.commit()
 
 
-def crawl_jobs(db: Session, new_items: list):
+def crawl_jobs(db: Session, new_items: list, source_stats: dict):
     ghana_qualifying = 0
     for source in GHANA_JOB_SOURCES:
         print(f"[jobs:ghana] Checking {source['name']}...")
         html = fetch_html(source["url"])
+        stat = {"last_checked": datetime.utcnow().isoformat(), "new_today": 0, "status": "ok" if html else "unreachable"}
         for c in extract_candidates(html, source["url"]):
-            score, sector, reason = score_text(c["title"], c["title"] + " " + c["context"], RESEARCH_CONSULTANCY_KEYWORDS)
+            base_score, sector, reason = score_text(c["title"], c["title"] + " " + c["context"], RESEARCH_CONSULTANCY_KEYWORDS)
+            if base_score == 0:
+                continue
+            geo = geography_bonus(c["title"] + " " + c["context"], is_ghana_tier=True)
+            score = min(100, base_score + geo)
             if score < settings.MIN_MATCH_SCORE:
                 continue
             ghana_qualifying += 1
@@ -264,6 +294,8 @@ def crawl_jobs(db: Session, new_items: list):
             )
             db.add(record)
             new_items.append(record)
+            stat["new_today"] += 1
+        source_stats[source["name"]] = stat
         time.sleep(0.3)
     db.commit()
 
@@ -274,8 +306,13 @@ def crawl_jobs(db: Session, new_items: list):
         for source in INTERNATIONAL_JOB_SOURCES:
             print(f"[jobs:intl] Checking {source['name']}...")
             html = fetch_html(source["url"])
+            stat = {"last_checked": datetime.utcnow().isoformat(), "new_today": 0, "status": "ok" if html else "unreachable"}
             for c in extract_candidates(html, source["url"]):
-                score, sector, reason = score_text(c["title"], c["title"] + " " + c["context"], RESEARCH_CONSULTANCY_KEYWORDS)
+                base_score, sector, reason = score_text(c["title"], c["title"] + " " + c["context"], RESEARCH_CONSULTANCY_KEYWORDS)
+                if base_score == 0:
+                    continue
+                geo = geography_bonus(c["title"] + " " + c["context"], is_ghana_tier=False)
+                score = min(100, base_score + geo)
                 if score < settings.MIN_MATCH_SCORE:
                     continue
                 item_id = item_hash("job", source["name"], c["title"])
@@ -289,6 +326,8 @@ def crawl_jobs(db: Session, new_items: list):
                 )
                 db.add(record)
                 new_items.append(record)
+                stat["new_today"] += 1
+            source_stats[source["name"]] = stat
             time.sleep(0.3)
         db.commit()
     else:
@@ -395,8 +434,9 @@ def send_email(html_body):
 def run_crawl(db: Session):
     """The single entry point the API route (and external cron ping) calls."""
     new_items = []
-    crawl_tenders(db, new_items)
-    crawl_jobs(db, new_items)
+    source_stats = {}
+    crawl_tenders(db, new_items, source_stats)
+    crawl_jobs(db, new_items, source_stats)
     prune_old(db)
 
     tenders_count = db.query(models.Opportunity).filter(models.Opportunity.kind == "tender").count()
@@ -410,4 +450,5 @@ def run_crawl(db: Session):
         "newItemsThisRun": len(new_items),
         "emailSent": email_sent,
         "emailNote": email_note,
+        "sourceStats": source_stats,
     }
