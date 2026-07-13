@@ -1,4 +1,5 @@
 import threading
+import json
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -46,6 +47,7 @@ def _background_crawl():
         status.email_sent = 1 if result["emailSent"] else 0
         status.email_note = result["emailNote"]
         status.error = ""
+        status.source_stats = json.dumps(result.get("sourceStats", {}))
         db.commit()
     except Exception as e:
         status = _get_or_create_status(db)
