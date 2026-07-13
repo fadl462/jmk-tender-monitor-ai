@@ -6,20 +6,20 @@
 <title>JMK Tender Monitor AI</title>
 <link rel="icon" type="image/png" href="/static/jmk-logo.png">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/tabler-icons/3.44.0/tabler-icons.min.css">
-<link rel="stylesheet" href="/static/style.css?v=10">
+<link rel="stylesheet" href="/static/style.css?v=11">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 </head>
 <body>
 
 <div class="shell">
 
+  <div id="sidebarOverlay"></div>
+
   <!-- Sidebar -->
   <aside class="sidebar">
     <div class="sidebar-brand">
-      <span class="logo-chip"><img src="/static/jmk-logo.png" alt="JMK"></span>
-      <div>
-        <div class="brand-name">JMK Tender<br>Monitor AI</div>
-      </div>
+      <span class="logo-chip"><img src="/static/jmk-logo.png" alt="JMK Consulting"></span>
+      <div class="brand-name">JMK Tender Monitor AI</div>
     </div>
     <nav class="nav">
       <button class="nav-item active" data-section="dashboard">
@@ -51,6 +51,9 @@
 
   <div class="main">
     <header class="topbar">
+      <button class="icon-btn mobile-menu-btn" id="mobileMenuBtn" title="Menu">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+      </button>
       <div class="topbar-title">
         <h1 id="sectionTitle">Dashboard</h1>
         <p id="sectionSubtitle">AI-powered consultancy opportunity intelligence</p>
@@ -58,11 +61,11 @@
       <div class="topbar-actions">
         <a class="link-btn" href="https://www.jmkconsultinggroup.com" target="_blank" rel="noopener">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.7 3.8 6 3.8 9s-1.3 6.3-3.8 9c-2.5-2.7-3.8-6-3.8-9s1.3-6.3 3.8-9z"/></svg>
-          Website
+          <span>Website</span>
         </a>
         <a class="link-btn orange" href="https://www.jmkconsultinggroup.com/news" target="_blank" rel="noopener">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19V7a2 2 0 0 1 2-2h9l5 5v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><path d="M15 5v5h5M8 13h8M8 17h5"/></svg>
-          Updates
+          <span>Updates</span>
         </a>
         <div class="notif-wrap">
           <button class="icon-btn" id="notifBellBtn" title="Notifications">
@@ -93,7 +96,9 @@
             <h2 class="greeting-title">Today's Opportunity Intelligence</h2>
             <p class="hint" id="scanSummary">—</p>
           </div>
-          <div class="today-date" id="todayDate"></div>
+          <div class="greeting-actions">
+            <div class="today-date" id="todayDate"></div>
+          </div>
         </div>
 
         <div class="kpi-grid five" id="kpiGrid"></div>
@@ -137,7 +142,7 @@
             <div class="panel">
               <h2>Scan Status</h2>
               <div id="scanStatusMini" class="status-box"></div>
-              <button class="btn accent" id="runScanMiniBtn" style="width:100%;margin-top:10px;">Run Scan Now</button>
+              <button class="btn accent" id="runScanTopBtn" style="width:100%;margin-top:10px;">Run Scan Now</button>
             </div>
           </div>
         </div>
@@ -184,13 +189,14 @@
         <div class="trust-bar">
           <div><i class="ti ti-shield-check" aria-hidden="true"></i> <div><strong>17 sources monitored</strong><br>Ghana first, international fallback</div></div>
           <div><i class="ti ti-robot" aria-hidden="true"></i> <div><strong>Weighted rule-based matching</strong><br>7-factor scoring against JMK's sectors</div></div>
-          <div><i class="ti ti-mail" aria-hidden="true"></i> <div><strong>Daily email digest</strong><br>Delivered every morning</div></div>
+          <div><i class="ti ti-mail" aria-hidden="true"></i> <div><strong>Daily email digest</strong><br>Delivered every morning via Brevo</div></div>
           <div><i class="ti ti-lock" aria-hidden="true"></i> <div><strong>No paid AI</strong><br>Zero API cost, ever</div></div>
         </div>
       </section>
 
       <!-- OPPORTUNITIES -->
       <section id="section-opportunities" class="section">
+        <div id="quickFilterChip"></div>
         <div class="panel">
           <div class="toolbar">
             <select id="filterKind"><option value="">All types</option><option value="tender">Tenders</option><option value="job">Jobs</option></select>
@@ -218,6 +224,7 @@
         <div class="panel assistant-panel">
           <h2>Ask about your opportunities</h2>
           <p class="hint">Rule-based smart filtering over the crawled opportunity list — try "which tenders close this week" or "show me WASH opportunities". This runs locally, no paid AI call.</p>
+          <div class="suggestion-chips" id="suggestionChips"></div>
           <div class="assistant-chat" id="assistantChat"></div>
           <div class="assistant-input-row">
             <input type="text" id="assistantInput" placeholder="Ask a question about opportunities...">
@@ -230,7 +237,7 @@
       <section id="section-sources" class="section">
         <div class="panel">
           <h2>Source Watchlist</h2>
-          <p class="hint">Checked automatically every morning — Ghana platforms first, international ones only as fallback.</p>
+          <p class="hint">Checked automatically every morning — Ghana platforms first, international ones only as fallback. Status below reflects the most recent crawl.</p>
           <div id="sourceList"></div>
         </div>
       </section>
@@ -241,7 +248,10 @@
           <h2>Crawl Control</h2>
           <p class="hint">Trigger a check manually, or see when the last automatic run happened.</p>
           <div id="crawlStatusBox" class="status-box"></div>
-          <button class="btn accent" id="triggerCrawlBtn" style="margin-top:12px;">Run Crawl Now</button>
+          <div style="display:flex;gap:10px;margin-top:12px;flex-wrap:wrap;">
+            <button class="btn accent" id="triggerCrawlBtn">Run Crawl Now</button>
+            <button class="btn secondary" id="clearRescanBtn">Clear Old Data &amp; Rescan</button>
+          </div>
         </div>
 
         <div class="panel">
@@ -262,11 +272,9 @@
 
         <div class="panel">
           <h2>Email Digest</h2>
+          <p class="hint">Sent via Brevo's HTTPS API (300 free emails/day) — not SMTP, which Render's free tier blocks unreliably.</p>
           <div class="settings-grid">
-            <div class="field"><label>SMTP host</label><input type="text" id="s_smtp_host" placeholder="smtp.gmail.com"></div>
-            <div class="field"><label>SMTP port</label><input type="number" id="s_smtp_port" placeholder="587"></div>
-            <div class="field"><label>SMTP user</label><input type="text" id="s_smtp_user"></div>
-            <div class="field"><label>SMTP password</label><input type="password" id="s_smtp_password" placeholder="Leave blank to keep current"></div>
+            <div class="field"><label>Brevo API key</label><input type="password" id="s_brevo_api_key" placeholder="Leave blank to keep current"></div>
             <div class="field"><label>Digest "from" address</label><input type="text" id="s_digest_from"></div>
             <div class="field"><label>Recipients (comma-separated)</label><input type="text" id="s_digest_recipients"></div>
           </div>
@@ -374,7 +382,8 @@
 <script>
   window.JMK_SECTORS = {{ sectors | tojson }};
   window.JMK_STATUSES = {{ statuses | tojson }};
+  window.JMK_CRON_SECRET = {{ cron_secret | tojson }};
 </script>
-<script src="/static/app.js?v=10"></script>
+<script src="/static/app.js?v=11"></script>
 </body>
 </html>
