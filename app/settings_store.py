@@ -17,12 +17,9 @@ DEFAULTS = {
     "min_ghana_job_results": env_settings.MIN_GHANA_JOB_RESULTS,
     "feed_window_days": env_settings.FEED_WINDOW_DAYS,
 
-    "smtp_host": env_settings.SMTP_HOST,
-    "smtp_port": env_settings.SMTP_PORT,
-    "smtp_user": env_settings.SMTP_USER,
-    "smtp_password": env_settings.SMTP_PASSWORD,
     "digest_from": env_settings.DIGEST_FROM,
     "digest_recipients": env_settings.DIGEST_RECIPIENTS,
+    "brevo_api_key": env_settings.BREVO_API_KEY,
 
     "crawl_schedule_time": "07:00",
     "crawl_timezone": "Africa/Accra",
