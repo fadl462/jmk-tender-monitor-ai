@@ -28,13 +28,9 @@ links back to its source so a person makes the final call.
 """
 import re
 import time
-import socket
-import smtplib
 import hashlib
 from datetime import datetime, timedelta
 from urllib.parse import urljoin
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
 
 import requests
 from bs4 import BeautifulSoup
@@ -66,18 +62,17 @@ SECTOR_KEYWORDS = {
     "WASH": ["wash", "water suppl", "sanitation", "hygiene", "borehole", "latrine", "sewage", "waste management"],
 }
 
-JOB_ROLE_KEYWORDS = [
-    "consultant", "consultancy", "researcher", "research associate", "research fellow",
-    "monitoring and evaluation", "m&e", "m & e", "evaluation", "evaluator", "assessment",
-    "survey", "terms of reference", " tor ", "feasibility study", "impact assessment",
-    "technical assistance", "data collection", "enumerator", "advisor", "advisory",
-    "technical advisor", "programme officer", "project officer", "coordinator",
-]
-
-TENDER_ROLE_KEYWORDS = [
-    "tender", "rfp", "request for proposal", "eoi", "expression of interest",
-    "invitation to tender", "procurement", "call for proposals", "terms of reference",
-    " tor ", "invitation for bids", "request for quotation", "rfq",
+# Study/engagement types and procurement/consultancy-call language — the
+# actual work JMK bids for as a firm, not an individual employee post.
+ROLE_KEYWORDS = [
+    "baseline", "endline", "midline", "mid-term review", "mid term review", "midterm review",
+    "impact assessment", "impact evaluation", "final evaluation", "terminal evaluation",
+    "summative evaluation", "formative evaluation", "situational analysis", "needs assessment",
+    "feasibility study", "evaluation of", "review of the", "assessment of the", "research study",
+    "consultant", "consultancy", "consulting firm", "call for consultancy", "expression of interest",
+    "request for proposal", "terms of reference", " tor ", "invitation to tender", "rfp",
+    "eoi", "procurement", "tender", "invitation for bids", "request for quotation", "rfq",
+    "technical assistance", "survey", "data collection", "monitoring and evaluation", "m&e",
 ]
 
 NEGATIVE_KEYWORDS = [
@@ -85,30 +80,31 @@ NEGATIVE_KEYWORDS = [
     "sales executive", "sales representative", "cashier", "electrician", "plumber",
     "chef", "hospitality", "housekeeping", "barista", "mechanic", "dispatch rider",
     "massage therapist", "class teacher", "shs teacher",
-]
-
-# Recognized by name for the "known donor alignment" scoring dimension and
-# the "client type" dimension — an institutional/donor client scores higher
-# on client type than an unrecognized private company.
-KNOWN_DONORS = [
-    "unicef", "usaid", "koica", "giz", "undp", "world bank", "afdb",
-    "african development bank", "european union", "eu delegation", "fcdo",
-    "dfid", "jica", "unfpa", "who", "fao", "wfp", "un women", "ilo",
-    "unesco", "global fund", "gavi", "plan international", "save the children",
-    "world vision", "oxfam", "care international", "danida", "sida", "irish aid",
-    "usda", "unhcr", "unops", "iom",
-]
-
-INSTITUTIONAL_CLIENT_HINTS = KNOWN_DONORS + [
-    "government", "ministry", "municipal", "district assembly", "metropolitan assembly",
-    "parliament", "embassy", "ngo", "commission", "authority",
+    # individual staff/employment postings — JMK bids as a firm, not as a job applicant
+    "officer", "coordinator", "manager", "assistant", "director", "internship", " intern ", "intern,",
+    "trainee", "volunteer", "permanent staff", "permanent position", "full-time", "full time",
+    "employee", "graduate trainee", "vacancy for staff", "staff member", "line manager",
 ]
 
 GENERIC_SIGNAL_KEYWORDS = [
     "capacity building", "stakeholder engagement", "desk review", "inception report",
     "final report", "qualitative", "quantitative", "secondary data", "primary data",
     "workshop", "field work", "report writing", "training needs assessment",
-    "baseline", "endline", "midline", "logframe", "theory of change",
+    "logframe", "theory of change",
+]
+
+# Recognized by name for the "known donor alignment" scoring dimension, the
+# "client type" dimension, and the AI Assistant's donor-name detection.
+KNOWN_DONORS = [
+    "unicef", "usaid", "fcdo", "dfid", "koica", "giz", "world bank", "afdb",
+    "undp", "unfpa", "wfp", "who", "eu", "european union", "jica", "danida",
+    "sida", "irish aid", "mastercard foundation", "gates foundation",
+    "global fund", "ausaid", "norad", "kfw", "aecid",
+]
+
+INSTITUTIONAL_CLIENT_HINTS = KNOWN_DONORS + [
+    "government", "ministry", "municipal", "district assembly", "metropolitan assembly",
+    "parliament", "embassy", "ngo", "commission", "authority",
 ]
 
 BUDGET_PATTERN = re.compile(
@@ -186,6 +182,23 @@ def find_nearby_deadline(context_text):
     return ""
 
 
+ORG_SPLIT_PATTERNS = [" - ", " – ", " — ", " | ", " at "]
+
+
+def extract_org_from_title(title):
+    """Best-effort: many job/tender titles follow 'Role - Organization' or
+    'Role at Organization' patterns. Not reliable for every source, but
+    catches a meaningful share without needing a per-site scraper."""
+    for pat in ORG_SPLIT_PATTERNS:
+        if pat in title:
+            parts = title.rsplit(pat, 1)
+            if len(parts) == 2 and 2 <= len(parts[1].strip()) <= 60:
+                candidate = parts[1].strip()
+                if any(c.isalpha() for c in candidate):
+                    return candidate
+    return ""
+
+
 def _split_csv(text):
     return [w.strip().lower() for w in (text or "").split(",") if w.strip()]
 
@@ -194,8 +207,7 @@ def _tier_points(count, weight):
     """Turn a raw keyword-match count into points out of `weight`, using
     diminishing-returns tiers rather than a straight linear count — a
     single strong hit already counts for a lot, and after 3 matches more
-    hits stop adding anything (avoids keyword-stuffed listings dominating
-    just by repetition)."""
+    hits stop adding anything."""
     if count >= 3:
         frac = 1.0
     elif count == 2:
@@ -207,23 +219,20 @@ def _tier_points(count, weight):
     return round(weight * frac)
 
 
-def score_text_weighted(text, kind, db_settings, geo_hint=None, org_text=""):
+def score_text_weighted(title, context_text, db_settings, geo_hint=None):
     """
     Weighted scoring across 7 dimensions, summing to a 0-100 score.
-    `kind` is "tender" or "job" (selects the base role-keyword list).
     `geo_hint` is "Ghana" / "International" / None — set for jobs based on
     which source tier found them; left None for tenders (no such split).
-    `org_text` is the funder/employer name if already known, folded into
-    the client-type and donor-alignment checks alongside the title text.
-    Returns (score, sector, reason, budget_text).
+    Returns (score, sector, reason).
     """
-    t = text.lower()
-    combined_for_org_checks = (text + " " + (org_text or "")).lower()
+    combined = f"{title} {context_text}"
+    t = combined.lower()
 
     negative_keywords = NEGATIVE_KEYWORDS + _split_csv(db_settings.get("extra_negative_keywords", ""))
     for neg in negative_keywords:
         if neg in t:
-            return 0, "", "Filtered out — looks unrelated to JMK's research/consultancy scope.", ""
+            return 0, "", "Filtered out — looks unrelated to JMK's research/consultancy scope."
 
     # --- Sector (30 pts) ---
     extra_sector = db_settings.get("extra_sector_keywords", {}) or {}
@@ -236,10 +245,12 @@ def score_text_weighted(text, kind, db_settings, geo_hint=None, org_text=""):
     sector_pts = _tier_points(best_count, 30)
 
     # --- Service / consultancy fit (25 pts) ---
-    base_role_kws = TENDER_ROLE_KEYWORDS if kind == "tender" else JOB_ROLE_KEYWORDS
-    role_keywords = base_role_kws + _split_csv(db_settings.get("extra_role_keywords", ""))
+    role_keywords = ROLE_KEYWORDS + _split_csv(db_settings.get("extra_role_keywords", ""))
     matched_roles = [kw for kw in role_keywords if kw.strip() in t]
     service_pts = _tier_points(len(matched_roles), 25)
+
+    if not matched_roles and best_count == 0:
+        return 0, "", ""
 
     # --- Geography (15 pts) ---
     if "ghana" in t:
@@ -252,26 +263,25 @@ def score_text_weighted(text, kind, db_settings, geo_hint=None, org_text=""):
         geo_pts = 8  # tenders with no explicit geo mention — unknown but plausibly relevant
 
     # --- Client type (10 pts) ---
-    client_pts = 10 if any(hint in combined_for_org_checks for hint in INSTITUTIONAL_CLIENT_HINTS) else 5
+    client_pts = 10 if any(hint in t for hint in INSTITUTIONAL_CLIENT_HINTS) else 5
 
     # --- Secondary/generic keywords (10 pts) ---
     generic_count = sum(1 for kw in GENERIC_SIGNAL_KEYWORDS if kw in t)
     keyword_pts = _tier_points(generic_count, 10)
 
     # --- Budget mentioned (5 pts) ---
-    budget_match = BUDGET_PATTERN.search(text)
+    budget_match = BUDGET_PATTERN.search(combined)
     budget_pts = 5 if budget_match else 0
-    budget_text = budget_match.group(0) if budget_match else ""
 
     # --- Known donor alignment (5 pts) ---
-    matched_donor = next((d for d in KNOWN_DONORS if d in combined_for_org_checks), None)
+    matched_donor = next((d for d in KNOWN_DONORS if d in t), None)
     donor_pts = 5 if matched_donor else 0
 
     score = sector_pts + service_pts + geo_pts + client_pts + keyword_pts + budget_pts + donor_pts
     score = max(0, min(100, score))
 
     if score == 0:
-        return 0, "", "", ""
+        return 0, "", ""
 
     bits = [
         f"Sector {sector_pts}/30" + (f" ({best_sector})" if best_sector else ""),
@@ -279,11 +289,11 @@ def score_text_weighted(text, kind, db_settings, geo_hint=None, org_text=""):
         f"Geography {geo_pts}/15",
         f"Client type {client_pts}/10",
         f"Keywords {keyword_pts}/10",
-        f"Budget {budget_pts}/5",
+        f"Budget {budget_pts}/5" + (f" ({budget_match.group(0)})" if budget_match else ""),
         f"Donor history {donor_pts}/5" + (f" ({matched_donor})" if matched_donor else ""),
     ]
     reason = " · ".join(bits)
-    return score, best_sector, reason, budget_text
+    return score, best_sector, reason
 
 
 def extract_candidates(html, base_url):
@@ -316,39 +326,45 @@ def _exists(db: Session, item_id: str) -> bool:
     return db.query(models.Opportunity.id).filter(models.Opportunity.id == item_id).first() is not None
 
 
-def crawl_tenders(db: Session, new_items: list, db_settings: dict):
+def crawl_tenders(db: Session, new_items: list, source_stats: dict, db_settings: dict):
     threshold = db_settings.get("match_threshold", 40)
     for source in TENDER_SOURCES:
         print(f"[tenders] Checking {source['name']}...")
         html = fetch_html(source["url"])
+        stat = {"last_checked": datetime.utcnow().isoformat(), "new_today": 0,
+                "status": "ok" if html else "unreachable"}
         for c in extract_candidates(html, source["url"]):
-            score, sector, reason, budget_text = score_text_weighted(c["context"], "tender", db_settings)
+            score, sector, reason = score_text_weighted(c["title"], c["context"], db_settings)
             if score < threshold:
                 continue
             item_id = item_hash("tender", source["name"], c["title"])
             if _exists(db, item_id):
                 continue
             record = models.Opportunity(
-                id=item_id, kind="tender", title=c["title"], org="",
+                id=item_id, kind="tender", title=c["title"], org=extract_org_from_title(c["title"]),
                 sector=sector, deadline=find_nearby_deadline(c["context"]),
-                match_score=score, match_reason=reason, budget_text=budget_text,
+                match_score=score, match_reason=reason,
                 source=source["name"], source_url=c["url"],
             )
             db.add(record)
             new_items.append(record)
+            stat["new_today"] += 1
+        source_stats[source["name"]] = stat
         time.sleep(0.3)
     db.commit()
 
 
-def crawl_jobs(db: Session, new_items: list, db_settings: dict):
+def crawl_jobs(db: Session, new_items: list, source_stats: dict, db_settings: dict):
     threshold = db_settings.get("match_threshold", 40)
     min_ghana_job_results = db_settings.get("min_ghana_job_results", 5)
     ghana_qualifying = 0
     for source in GHANA_JOB_SOURCES:
         print(f"[jobs:ghana] Checking {source['name']}...")
         html = fetch_html(source["url"])
+        stat = {"last_checked": datetime.utcnow().isoformat(), "new_today": 0,
+                "status": "ok" if html else "unreachable"}
         for c in extract_candidates(html, source["url"]):
-            score, sector, reason, budget_text = score_text_weighted(c["title"], "job", db_settings, geo_hint="Ghana")
+            score, sector, reason = score_text_weighted(c["title"], c["context"], db_settings, geo_hint="Ghana")
             if score < threshold:
                 continue
             ghana_qualifying += 1
@@ -356,13 +372,15 @@ def crawl_jobs(db: Session, new_items: list, db_settings: dict):
             if _exists(db, item_id):
                 continue
             record = models.Opportunity(
-                id=item_id, kind="job", title=c["title"], org="", location="Ghana",
+                id=item_id, kind="job", title=c["title"], org=extract_org_from_title(c["title"]), location="Ghana",
                 sector=sector, deadline=find_nearby_deadline(c["context"]),
-                match_score=score, match_reason=reason, budget_text=budget_text,
+                match_score=score, match_reason=reason,
                 source=source["name"], source_url=c["url"], source_tier="Ghana",
             )
             db.add(record)
             new_items.append(record)
+            stat["new_today"] += 1
+        source_stats[source["name"]] = stat
         time.sleep(0.3)
     db.commit()
 
@@ -373,21 +391,25 @@ def crawl_jobs(db: Session, new_items: list, db_settings: dict):
         for source in INTERNATIONAL_JOB_SOURCES:
             print(f"[jobs:intl] Checking {source['name']}...")
             html = fetch_html(source["url"])
+            stat = {"last_checked": datetime.utcnow().isoformat(), "new_today": 0,
+                    "status": "ok" if html else "unreachable"}
             for c in extract_candidates(html, source["url"]):
-                score, sector, reason, budget_text = score_text_weighted(c["title"], "job", db_settings, geo_hint="International")
+                score, sector, reason = score_text_weighted(c["title"], c["context"], db_settings, geo_hint="International")
                 if score < threshold:
                     continue
                 item_id = item_hash("job", source["name"], c["title"])
                 if _exists(db, item_id):
                     continue
                 record = models.Opportunity(
-                    id=item_id, kind="job", title=c["title"], org="", location="",
+                    id=item_id, kind="job", title=c["title"], org=extract_org_from_title(c["title"]), location="",
                     sector=sector, deadline=find_nearby_deadline(c["context"]),
-                    match_score=score, match_reason=reason, budget_text=budget_text,
+                    match_score=score, match_reason=reason,
                     source=source["name"], source_url=c["url"], source_tier="International",
                 )
                 db.add(record)
                 new_items.append(record)
+                stat["new_today"] += 1
+            source_stats[source["name"]] = stat
             time.sleep(0.3)
         db.commit()
     else:
@@ -507,45 +529,46 @@ def build_digest_html(new_items):
 
 
 def send_email(html_body, db_settings: dict):
+    """Sends the digest via Brevo's HTTPS API instead of raw SMTP.
+
+    Two separate SMTP failures happened on Render's free tier (first an
+    IPv6-routing issue, then a plain connection timeout) — both point at
+    Render's network not reliably allowing outbound SMTP. HTTPS is never
+    blocked (it's exactly what the crawler already uses to fetch every
+    source), so sending the digest as a normal API call over HTTPS
+    sidesteps the whole problem rather than continuing to patch around
+    SMTP quirks.
+    """
     recipients = [r.strip() for r in (db_settings.get("digest_recipients") or "").split(",") if r.strip()]
     if not recipients:
         return False, "digest_recipients not set"
 
-    smtp_host = db_settings.get("smtp_host", "")
-    smtp_port = int(db_settings.get("smtp_port", 587) or 587)
-    smtp_user = db_settings.get("smtp_user", "")
-    smtp_password = db_settings.get("smtp_password", "")
-    digest_from = db_settings.get("digest_from") or smtp_user
+    brevo_api_key = db_settings.get("brevo_api_key", "")
+    if not brevo_api_key:
+        return False, "BREVO_API_KEY not set"
 
-    # Some hosts (Render included) don't route IPv6 outbound, but Gmail's
-    # hostname resolves to an IPv6 address as well as IPv4 — force IPv4-only
-    # resolution just for this connection to avoid "Network is unreachable".
-    original_getaddrinfo = socket.getaddrinfo
-
-    def ipv4_only(host, port, family=0, type=0, proto=0, flags=0):
-        return original_getaddrinfo(host, port, socket.AF_INET, type, proto, flags)
-
-    # Ghana is UTC+0 year-round (no daylight saving), so the server's UTC
-    # hour is also the Accra hour — safe to use directly for the AM/PM label.
     hour = datetime.utcnow().hour
     run_label = "Morning" if hour < 12 else "Afternoon"
+    sender_email = db_settings.get("digest_from") or recipients[0]
 
     try:
-        msg = MIMEMultipart("alternative")
-        msg["Subject"] = f"JMK Tender Monitor AI — {run_label} Digest — {time.strftime('%d %b %Y')}"
-        msg["From"] = digest_from
-        msg["To"] = ", ".join(recipients)
-        msg.attach(MIMEText(html_body, "html"))
-
-        socket.getaddrinfo = ipv4_only
-        try:
-            with smtplib.SMTP(smtp_host, smtp_port, timeout=30) as server:
-                server.starttls()
-                server.login(smtp_user, smtp_password)
-                server.sendmail(msg["From"], recipients, msg.as_string())
-        finally:
-            socket.getaddrinfo = original_getaddrinfo
-
+        resp = requests.post(
+            "https://api.brevo.com/v3/smtp/email",
+            headers={
+                "api-key": brevo_api_key,
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+            },
+            json={
+                "sender": {"email": sender_email, "name": "JMK Tender Monitor AI"},
+                "to": [{"email": r} for r in recipients],
+                "subject": f"JMK Tender Monitor AI — {run_label} Digest — {time.strftime('%d %b %Y')}",
+                "htmlContent": html_body,
+            },
+            timeout=30,
+        )
+        if resp.status_code >= 400:
+            return False, f"Brevo API error {resp.status_code}: {resp.text[:200]}"
         return True, f"Emailed {len(recipients)} recipient(s)"
     except Exception as e:
         return False, str(e)
@@ -556,8 +579,9 @@ def run_crawl(db: Session):
     db_settings = settings_store.get_all_settings(db)
 
     new_items = []
-    crawl_tenders(db, new_items, db_settings)
-    crawl_jobs(db, new_items, db_settings)
+    source_stats = {}
+    crawl_tenders(db, new_items, source_stats, db_settings)
+    crawl_jobs(db, new_items, source_stats, db_settings)
     prune_old(db, db_settings)
     generate_notifications(db, new_items, db_settings)
 
@@ -572,4 +596,5 @@ def run_crawl(db: Session):
         "newItemsThisRun": len(new_items),
         "emailSent": email_sent,
         "emailNote": email_note,
+        "sourceStats": source_stats,
     }
