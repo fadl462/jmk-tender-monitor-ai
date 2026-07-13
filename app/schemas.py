@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional, List, Dict
+from typing import Optional, Dict
 from datetime import datetime
 
 
@@ -14,7 +14,6 @@ class OpportunityOut(BaseModel):
     employment_type: str
     match_score: int
     match_reason: str
-    budget_text: str = ""
     source: str
     source_url: str
     source_tier: str
@@ -75,6 +74,7 @@ class CrawlStatusOut(BaseModel):
     email_sent: int = 0
     email_note: str = ""
     error: str = ""
+    source_stats: str = "{}"
 
     class Config:
         from_attributes = True
@@ -89,12 +89,9 @@ class AppSettingsOut(BaseModel):
     min_ghana_job_results: int
     feed_window_days: int
 
-    smtp_host: str
-    smtp_port: int
-    smtp_user: str
-    smtp_password_set: bool  # never send the real password back, just whether one is stored
     digest_from: str
     digest_recipients: str
+    brevo_api_key_set: bool  # never send the real key back, just whether one is stored
 
     crawl_schedule_time: str
     crawl_timezone: str
@@ -119,12 +116,9 @@ class AppSettingsIn(BaseModel):
     min_ghana_job_results: Optional[int] = None
     feed_window_days: Optional[int] = None
 
-    smtp_host: Optional[str] = None
-    smtp_port: Optional[int] = None
-    smtp_user: Optional[str] = None
-    smtp_password: Optional[str] = None  # only written if non-empty
     digest_from: Optional[str] = None
     digest_recipients: Optional[str] = None
+    brevo_api_key: Optional[str] = None  # only written if non-empty
 
     crawl_schedule_time: Optional[str] = None
     crawl_timezone: Optional[str] = None
