@@ -5,8 +5,9 @@ from fastapi.middleware.cors import CORSMiddleware
 import os
 
 from .database import Base, engine
-from .routes import opportunities, board, crawl, assistant, settings, notifications
+from .routes import opportunities, board, crawl, assistant, settings as settings_routes, notifications
 from .crawler import SECTORS
+from .config import settings
 
 Base.metadata.create_all(bind=engine)
 
@@ -23,14 +24,14 @@ app.include_router(opportunities.router)
 app.include_router(board.router)
 app.include_router(crawl.router)
 app.include_router(assistant.router)
-app.include_router(settings.router)
+app.include_router(settings_routes.router)
 app.include_router(notifications.router)
 
 BASE_DIR = os.path.dirname(__file__)
 app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 
-STATUSES = ["New", "Reviewing", "Preparing Bid", "Submitted", "Won", "Lost", "Archived"]
+STATUSES = ["New", "Reviewing", "Go/No-Go", "Proposal Drafting", "Internal Review", "Submitted", "Shortlisted", "Awarded", "Lost", "Archived"]
 
 
 @app.get("/healthz")
@@ -40,4 +41,7 @@ def healthz():
 
 @app.get("/")
 def dashboard(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request, "sectors": SECTORS, "statuses": STATUSES})
+    return templates.TemplateResponse("index.html", {
+        "request": request, "sectors": SECTORS, "statuses": STATUSES,
+        "cron_secret": settings.CRON_SECRET,
+    })
