@@ -1,11 +1,13 @@
 """
 The "AI Assistant" — despite the name, this is NOT a call to Claude, GPT, or
 any paid model. It's a rule-based natural-language-ish query parser: it
-looks for sector names, organization names, deadline phrases ("this week",
-"this month"), and kind words ("tender"/"job") in the question, and filters
-the opportunity list accordingly. This keeps it genuinely free to run.
+looks for sector names, known donor/organization names, deadline phrases
+("this week", "this month"), and kind words ("tender"/"job") in the
+question, and filters the opportunity list accordingly. This keeps it
+genuinely free to run.
 
-It's honest about this in its own responses — see `_explain` below.
+It's honest about this in its own responses — see the `explanation` built
+below.
 """
 from datetime import datetime, timedelta
 
@@ -27,13 +29,22 @@ TIME_WINDOWS = {
     "next 30 days": 30,
 }
 
-# Common donors/funders active in Ghana's development space — matched
-# case-insensitively so "unicef opportunities" works as well as "UNICEF".
+# Known donors/funders to recognize by name. Matched as plain substrings
+# against the lowercased question, so multi-word names ("world bank") work
+# too. This is deliberately a fixed list rather than "any capitalized word
+# in the question" — that heuristic used to misfire constantly, because
+# sector names in the assistant's own suggestion chips (e.g. "Education
+# opportunities", "WASH opportunities", "Governance opportunities") are
+# also capitalized, and were being treated as an org name to search for
+# inside the title. That collision made the sector-only quick filters
+# return 0 matches even when the sector genuinely had results.
 KNOWN_DONORS = [
-    "unicef", "usaid", "fcdo", "dfid", "koica", "giz", "world bank", "afdb",
-    "undp", "unfpa", "wfp", "who", "eu", "european union", "jica", "danida",
-    "sida", "irish aid", "mastercard foundation", "gates foundation",
-    "global fund", "ausaid", "norad", "kfw", "aecid",
+    "unicef", "usaid", "koica", "giz", "undp", "world bank", "afdb",
+    "african development bank", "european union", "eu delegation", "fcdo",
+    "dfid", "jica", "unfpa", "who", "fao", "wfp", "un women", "ilo",
+    "unesco", "global fund", "gavi", "plan international", "save the children",
+    "world vision", "oxfam", "care international", "danida", "sida", "irish aid",
+    "usda", "unhcr", "unops", "iom",
 ]
 
 
@@ -45,14 +56,7 @@ def ask_assistant(query: AssistantQuery, db: Session = Depends(get_db)):
     matched_sector = next((s for s in SECTORS if s.lower().split(",")[0].split("&")[0].strip() in q), None)
     matched_kind = "tender" if "tender" in q else ("job" if "job" in q or "consultanc" in q else None)
     matched_window = next((days for phrase, days in TIME_WINDOWS.items() if phrase in q), None)
-
-    # donor detection: known donor names first (case-insensitive), then fall
-    # back to guessing from capitalized words for anything not on the list
     matched_donors = [d for d in KNOWN_DONORS if d in q]
-    stopwords = {"show", "me", "which", "what", "find", "list", "all", "the", "opportunities",
-                 "tenders", "jobs", "closing", "close", "this", "week", "month", "fit", "for"}
-    org_terms = matched_donors or [w.strip(",.?!") for w in query.question.split()
-                 if w[:1].isupper() and w.lower() not in stopwords and len(w) > 2]
 
     results = items
     explanation_bits = []
@@ -65,13 +69,14 @@ def ask_assistant(query: AssistantQuery, db: Session = Depends(get_db)):
         results = [i for i in results if matched_sector.lower() in (i.sector or "").lower()]
         explanation_bits.append(f"sector contains '{matched_sector}'")
 
-    if org_terms:
-        results = [i for i in results if any(term.lower() in (i.org or "").lower() or term.lower() in i.title.lower() for term in org_terms)]
-        explanation_bits.append(f"mentions {', '.join(org_terms)}")
+    if matched_donors:
+        results = [i for i in results if any(d in (i.org or "").lower() or d in i.title.lower() for d in matched_donors)]
+        explanation_bits.append(f"mentions {', '.join(matched_donors)}")
 
     if matched_window:
         today = datetime.utcnow().date()
         cutoff = today + timedelta(days=matched_window)
+
         def in_window(i):
             if not i.deadline:
                 return False
@@ -80,6 +85,7 @@ def ask_assistant(query: AssistantQuery, db: Session = Depends(get_db)):
                 return today <= d <= cutoff
             except ValueError:
                 return False
+
         results = [i for i in results if in_window(i)]
         explanation_bits.append(f"deadline within {matched_window} day(s)")
 
