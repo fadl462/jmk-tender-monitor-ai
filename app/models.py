@@ -1,5 +1,5 @@
 """
-Two tables:
+Tables:
 
 - Opportunity: everything the crawler finds (tenders and jobs), scored
   and deduplicated. This is what feeds the dashboard's "Today's
@@ -7,6 +7,16 @@ Two tables:
 - BoardItem: JMK's own working pipeline — things a person has deliberately
   added to track (usually pulled in from an Opportunity, but can also be
   added by hand), with a status like New / Reviewing / Submitted / Won.
+- AppSetting: a simple key/value store for settings that used to be
+  fixed at deploy time (env vars) but are now editable from the Settings
+  page — match threshold, SMTP details, notification preferences, keyword
+  overrides, etc. Each row's `value` is a JSON-encoded string so a single
+  table can hold everything from a number to a list to a nested dict
+  without needing a new column per setting.
+- Notification: in-app notification center entries (new high-priority
+  opportunity, deadline reminders, watched-donor alerts, daily scan
+  complete). `dedup_key` prevents the same alert firing twice (e.g. a
+  "3 days left" reminder for the same opportunity on two different runs).
 """
 from sqlalchemy import Column, String, Integer, Float, DateTime, Text
 from sqlalchemy.sql import func
@@ -32,6 +42,7 @@ class Opportunity(Base):
     employment_type = Column(String, default="")
     match_score = Column(Integer, default=0)
     match_reason = Column(Text, default="")
+    budget_text = Column(String, default="")          # best-effort extracted budget/value string, may be blank
     source = Column(String, default="")
     source_url = Column(String, default="")
     source_tier = Column(String, default="")          # "Ghana" or "International" (jobs only)
@@ -67,4 +78,23 @@ class CrawlStatus(Base):
     email_sent = Column(Integer, default=0)  # 0/1 as int for simplicity
     email_note = Column(Text, default="")
     error = Column(Text, default="")
-    source_stats = Column(Text, default="{}")  # JSON: {source_name: {last_checked, new_today, status}}
+
+
+class AppSetting(Base):
+    __tablename__ = "app_settings"
+
+    key = Column(String, primary_key=True)
+    value = Column(Text, default="")  # JSON-encoded
+
+
+class Notification(Base):
+    __tablename__ = "notifications"
+
+    id = Column(String, primary_key=True, default=gen_id)
+    type = Column(String, default="")           # "high_priority" | "deadline" | "donor_watch" | "scan_complete"
+    title = Column(String, default="")
+    message = Column(Text, default="")
+    opportunity_id = Column(String, default="")  # blank if not tied to a specific opportunity
+    dedup_key = Column(String, default="")       # prevents duplicate alerts across runs
+    is_read = Column(Integer, default=0)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
