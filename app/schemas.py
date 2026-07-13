@@ -74,6 +74,7 @@ class CrawlStatusOut(BaseModel):
     email_sent: int = 0
     email_note: str = ""
     error: str = ""
+    source_stats: str = "{}"
 
     class Config:
         from_attributes = True
