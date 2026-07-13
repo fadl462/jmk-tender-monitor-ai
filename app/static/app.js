@@ -103,6 +103,7 @@ function switchSection(section){
   if(section === 'opportunities') loadAllOpportunities();
   if(section === 'pipeline') loadPipeline();
   if(section === 'settings') loadCrawlStatus('crawlStatusBox');
+  if(section === 'sources') renderSources();
 }
 
 // ---------- dashboard ----------
@@ -137,7 +138,7 @@ async function loadDashboard(){
     });
   });
 
-  const totalSources = 9 + 8;
+  const totalSources = 9 + 8; // tender portals + Ghana job platforms (always checked)
   document.getElementById('scanSummary').textContent =
     `Scanned ${totalSources} sources and found ${stats.totalOpportunities ?? 0} opportunities matching JMK's scope.`;
 
@@ -160,6 +161,8 @@ function buildInsights(stats){
     if(stats.closingIn48h) bits.push(`<strong>${stats.closingIn48h}</strong> close within 48 hours — worth checking today.`);
     const topSector = Object.entries(stats.sectorBreakdown || {}).sort((a,b) => b[1]-a[1])[0];
     if(topSector) bits.push(`<strong>${escapeHtml(topSector[0])}</strong> is the most active sector right now.`);
+    const topDonorNames = (stats.topDonors || []).slice(0,3).map(d => escapeHtml(d.name));
+    if(topDonorNames.length) bits.push(`Recent postings from <strong>${topDonorNames.join(', ')}</strong>.`);
   } else {
     bits.push('No opportunities yet — run a crawl to populate this dashboard.');
   }
@@ -233,8 +236,16 @@ function renderDashboardOpportunities(){
   wireOppCardButtons(document.getElementById('topOpportunities'));
 }
 
+function matchTier(score){
+  if(score >= 90) return {label:'Excellent', cls:'excellent'};
+  if(score >= 80) return {label:'Strong', cls:'strong'};
+  if(score >= 60) return {label:'Moderate', cls:'moderate'};
+  return {label:'Low', cls:'low'};
+}
+
 function renderOppCard(o){
   const orgLine = o.org || (o.kind === 'job' ? 'Employer not specified' : 'Funder not specified');
+  const tier = matchTier(o.match_score);
   return `
     <div class="opp-card">
       <div class="opp-card-head">
@@ -245,18 +256,18 @@ function renderOppCard(o){
             <div class="opp-org">${escapeHtml(orgLine)}${o.location ? ' · ' + escapeHtml(o.location) : ''}</div>
           </div>
           <div class="match-badge">
-            <span class="pct">${o.match_score}%</span>
-            <span class="stars">${starRating(o.match_score)}</span>
+            <span class="pct ${tier.cls}">${o.match_score}%</span>
+            <span class="tier-label ${tier.cls}">${tier.label}</span>
           </div>
         </div>
       </div>
-      <div class="match-bar-track"><div class="match-bar-fill" style="width:${o.match_score}%"></div></div>
+      <div class="match-bar-track"><div class="match-bar-fill ${tier.cls}" style="width:${o.match_score}%"></div></div>
       <div class="opp-meta">
         <span class="chip sector">${escapeHtml(o.sector || 'Unsectored')}</span>
         ${o.source_tier ? `<span class="chip ${o.source_tier === 'International' ? 'intl' : 'ghana'}">${escapeHtml(o.source_tier)}</span>` : ''}
         ${deadlineChip(o.deadline)}
       </div>
-      ${o.match_reason ? `<div class="opp-reason">${escapeHtml(o.match_reason)}</div>` : ''}
+      ${o.match_reason ? `<div class="opp-reason"><strong>Why this matches JMK:</strong> ${escapeHtml(o.match_reason)}</div>` : ''}
       <div class="opp-actions">
         <button class="btn secondary small" data-track="${o.id}">+ Track in Pipeline</button>
         ${o.source_url ? `<a href="${escapeHtml(o.source_url)}" target="_blank" rel="noopener">View source ↗</a>` : ''}
@@ -468,17 +479,46 @@ async function askAssistant(){
 }
 
 // ---------- sources ----------
-function renderSources(){
+function timeAgo(iso){
+  if(!iso) return 'Not yet scanned';
+  const diffMin = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+  if(diffMin < 1) return 'Just now';
+  if(diffMin < 60) return `${diffMin}m ago`;
+  const diffHr = Math.round(diffMin / 60);
+  if(diffHr < 24) return `${diffHr}h ago`;
+  return `${Math.round(diffHr / 24)}d ago`;
+}
+
+async function renderSources(){
+  let sourceStats = {};
+  try{
+    const s = await fetch('/api/crawl/status').then(r => r.json());
+    sourceStats = JSON.parse(s.source_stats || '{}');
+  }catch(e){ /* first load, or no crawl yet — show as not-yet-scanned */ }
+
   const groups = {};
   SOURCES.forEach(s => { groups[s.type] = groups[s.type] || []; groups[s.type].push(s); });
   document.getElementById('sourceList').innerHTML = Object.keys(groups).map(type => `
     <div class="source-group">
       <div class="source-group-label">${escapeHtml(type)}</div>
-      ${groups[type].map(s => `
+      ${groups[type].map(s => {
+        const stat = sourceStats[s.name];
+        const ok = stat ? stat.status === 'ok' : null;
+        const dot = ok === null ? '⚪' : (ok ? '🟢' : '🔴');
+        const statusText = ok === null ? 'Not yet scanned' : (ok ? timeAgo(stat.last_checked) : 'Unreachable last run');
+        const newToday = stat ? stat.new_today : null;
+        return `
         <div class="source">
-          <a href="${s.url}" target="_blank" rel="noopener">${escapeHtml(s.name)}</a><span class="org">— ${escapeHtml(s.org)}</span>
+          <div class="source-row">
+            <a href="${s.url}" target="_blank" rel="noopener">${escapeHtml(s.name)}</a><span class="org">— ${escapeHtml(s.org)}</span>
+          </div>
+          <div class="source-status">
+            <span>${dot} ${escapeHtml(statusText)}</span>
+            ${newToday !== null ? `<span class="new-today">${newToday} new last scan</span>` : ''}
+          </div>
           <div class="note">${escapeHtml(s.note)}</div>
-        </div>`).join('')}
+        </div>`;
+      }).join('')}
     </div>`).join('');
 }
 
@@ -555,10 +595,18 @@ document.addEventListener('DOMContentLoaded', () => {
   applyTheme(localStorage.getItem('jmk-theme') || 'light');
   document.getElementById('themeToggle').addEventListener('click', toggleTheme);
 
+  const sidebarEl = document.querySelector('.sidebar');
+  const overlayEl = document.getElementById('sidebarOverlay');
+  function openMobileMenu(){ sidebarEl.classList.add('open'); overlayEl.classList.add('open'); }
+  function closeMobileMenu(){ sidebarEl.classList.remove('open'); overlayEl.classList.remove('open'); }
+  document.getElementById('mobileMenuBtn').addEventListener('click', openMobileMenu);
+  overlayEl.addEventListener('click', closeMobileMenu);
+
   document.querySelectorAll('.nav-item').forEach(btn => {
     btn.addEventListener('click', () => {
       if(btn.dataset.section === 'opportunities') quickFilter = 'all';
       switchSection(btn.dataset.section);
+      closeMobileMenu();
     });
   });
 
