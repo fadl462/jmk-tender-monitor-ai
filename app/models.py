@@ -67,3 +67,4 @@ class CrawlStatus(Base):
     email_sent = Column(Integer, default=0)  # 0/1 as int for simplicity
     email_note = Column(Text, default="")
     error = Column(Text, default="")
+    source_stats = Column(Text, default="{}")  # JSON: {source_name: {last_checked, new_today, status}}
