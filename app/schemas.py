@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List, Dict
 from datetime import datetime
 
 
@@ -14,6 +14,7 @@ class OpportunityOut(BaseModel):
     employment_type: str
     match_score: int
     match_reason: str
+    budget_text: str = ""
     source: str
     source_url: str
     source_tier: str
@@ -74,7 +75,6 @@ class CrawlStatusOut(BaseModel):
     email_sent: int = 0
     email_note: str = ""
     error: str = ""
-    source_stats: str = "{}"
 
     class Config:
         from_attributes = True
@@ -82,3 +82,76 @@ class CrawlStatusOut(BaseModel):
 
 class AssistantQuery(BaseModel):
     question: str
+
+
+class AppSettingsOut(BaseModel):
+    match_threshold: int
+    min_ghana_job_results: int
+    feed_window_days: int
+
+    smtp_host: str
+    smtp_port: int
+    smtp_user: str
+    smtp_password_set: bool  # never send the real password back, just whether one is stored
+    digest_from: str
+    digest_recipients: str
+
+    crawl_schedule_time: str
+    crawl_timezone: str
+
+    ai_provider: str
+
+    notify_high_priority: bool
+    notify_deadline_3_days: bool
+    notify_donor_watch: bool
+    donor_watch_keywords: str  # comma-separated
+    notify_scan_complete: bool
+
+    theme_default: str
+
+    extra_sector_keywords: Dict[str, str]   # sector -> comma-separated extra keywords
+    extra_role_keywords: str                 # comma-separated
+    extra_negative_keywords: str              # comma-separated
+
+
+class AppSettingsIn(BaseModel):
+    match_threshold: Optional[int] = None
+    min_ghana_job_results: Optional[int] = None
+    feed_window_days: Optional[int] = None
+
+    smtp_host: Optional[str] = None
+    smtp_port: Optional[int] = None
+    smtp_user: Optional[str] = None
+    smtp_password: Optional[str] = None  # only written if non-empty
+    digest_from: Optional[str] = None
+    digest_recipients: Optional[str] = None
+
+    crawl_schedule_time: Optional[str] = None
+    crawl_timezone: Optional[str] = None
+
+    ai_provider: Optional[str] = None
+
+    notify_high_priority: Optional[bool] = None
+    notify_deadline_3_days: Optional[bool] = None
+    notify_donor_watch: Optional[bool] = None
+    donor_watch_keywords: Optional[str] = None
+    notify_scan_complete: Optional[bool] = None
+
+    theme_default: Optional[str] = None
+
+    extra_sector_keywords: Optional[Dict[str, str]] = None
+    extra_role_keywords: Optional[str] = None
+    extra_negative_keywords: Optional[str] = None
+
+
+class NotificationOut(BaseModel):
+    id: str
+    type: str
+    title: str
+    message: str
+    opportunity_id: str
+    is_read: int
+    created_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
