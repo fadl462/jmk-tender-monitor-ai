@@ -6,19 +6,20 @@
 <title>JMK Tender Monitor AI</title>
 <link rel="icon" type="image/png" href="/static/jmk-logo.png">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/tabler-icons/3.44.0/tabler-icons.min.css">
-<link rel="stylesheet" href="/static/style.css?v=9">
+<link rel="stylesheet" href="/static/style.css?v=10">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 </head>
 <body>
 
 <div class="shell">
-<div id="sidebarOverlay"></div>
 
   <!-- Sidebar -->
   <aside class="sidebar">
     <div class="sidebar-brand">
-      <span class="logo-chip"><img src="/static/jmk-logo.png" alt="JMK Consulting"></span>
-      <div class="brand-name">Tender Monitor AI</div>
+      <span class="logo-chip"><img src="/static/jmk-logo.png" alt="JMK"></span>
+      <div>
+        <div class="brand-name">JMK Tender<br>Monitor AI</div>
+      </div>
     </div>
     <nav class="nav">
       <button class="nav-item active" data-section="dashboard">
@@ -50,9 +51,6 @@
 
   <div class="main">
     <header class="topbar">
-      <button class="icon-btn mobile-menu-btn" id="mobileMenuBtn" aria-label="Open menu">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
-      </button>
       <div class="topbar-title">
         <h1 id="sectionTitle">Dashboard</h1>
         <p id="sectionSubtitle">AI-powered consultancy opportunity intelligence</p>
@@ -66,6 +64,19 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19V7a2 2 0 0 1 2-2h9l5 5v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><path d="M15 5v5h5M8 13h8M8 17h5"/></svg>
           Updates
         </a>
+        <div class="notif-wrap">
+          <button class="icon-btn" id="notifBellBtn" title="Notifications">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+            <span class="notif-badge" id="notifBadge" style="display:none;">0</span>
+          </button>
+          <div class="notif-dropdown" id="notifDropdown">
+            <div class="notif-dropdown-head">
+              <strong>Notifications</strong>
+              <button class="link-btn" id="markAllReadBtn" style="padding:4px 8px;">Mark all read</button>
+            </div>
+            <div id="notifList" class="notif-list"></div>
+          </div>
+        </div>
         <button class="icon-btn" id="themeToggle" title="Switch theme">
           <svg id="themeIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
         </button>
@@ -82,10 +93,7 @@
             <h2 class="greeting-title">Today's Opportunity Intelligence</h2>
             <p class="hint" id="scanSummary">—</p>
           </div>
-          <div class="greeting-actions">
-            <div class="today-date" id="todayDate"></div>
-            <button class="btn accent" id="runScanTopBtn">🔄 Scan for New Opportunities</button>
-          </div>
+          <div class="today-date" id="todayDate"></div>
         </div>
 
         <div class="kpi-grid five" id="kpiGrid"></div>
@@ -129,13 +137,53 @@
             <div class="panel">
               <h2>Scan Status</h2>
               <div id="scanStatusMini" class="status-box"></div>
+              <button class="btn accent" id="runScanMiniBtn" style="width:100%;margin-top:10px;">Run Scan Now</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel" style="margin-top:20px;">
+          <h2>Analytics</h2>
+          <p class="hint">Deeper trends across everything the crawl has found and everything in your pipeline.</p>
+          <div class="analytics-grid">
+            <div class="chart-box">
+              <h3>Opportunities — last 30 days</h3>
+              <canvas id="chartLast30"></canvas>
+            </div>
+            <div class="chart-box">
+              <h3>Deadlines this week</h3>
+              <canvas id="chartDeadlines"></canvas>
+            </div>
+            <div class="chart-box">
+              <h3>Opportunities by donor</h3>
+              <canvas id="chartByDonor"></canvas>
+            </div>
+            <div class="chart-box">
+              <h3>Sector trends (last 8 weeks)</h3>
+              <canvas id="chartSectorTrend"></canvas>
+            </div>
+            <div class="chart-box">
+              <h3>Country / location distribution</h3>
+              <canvas id="chartCountry"></canvas>
+            </div>
+            <div class="chart-box">
+              <h3>Average AI match over time</h3>
+              <canvas id="chartAvgMatch"></canvas>
+            </div>
+            <div class="chart-box">
+              <h3>Pipeline status</h3>
+              <canvas id="chartPipelineStatus"></canvas>
+            </div>
+            <div class="chart-box">
+              <h3>Monthly activity</h3>
+              <canvas id="chartMonthlyActivity"></canvas>
             </div>
           </div>
         </div>
 
         <div class="trust-bar">
           <div><i class="ti ti-shield-check" aria-hidden="true"></i> <div><strong>17 sources monitored</strong><br>Ghana first, international fallback</div></div>
-          <div><i class="ti ti-robot" aria-hidden="true"></i> <div><strong>Rule-based matching</strong><br>Scores opportunities against JMK's sectors</div></div>
+          <div><i class="ti ti-robot" aria-hidden="true"></i> <div><strong>Weighted rule-based matching</strong><br>7-factor scoring against JMK's sectors</div></div>
           <div><i class="ti ti-mail" aria-hidden="true"></i> <div><strong>Daily email digest</strong><br>Delivered every morning</div></div>
           <div><i class="ti ti-lock" aria-hidden="true"></i> <div><strong>No paid AI</strong><br>Zero API cost, ever</div></div>
         </div>
@@ -144,7 +192,6 @@
       <!-- OPPORTUNITIES -->
       <section id="section-opportunities" class="section">
         <div class="panel">
-          <div id="quickFilterChip"></div>
           <div class="toolbar">
             <select id="filterKind"><option value="">All types</option><option value="tender">Tenders</option><option value="job">Jobs</option></select>
             <select id="filterSector"></select>
@@ -171,7 +218,6 @@
         <div class="panel assistant-panel">
           <h2>Ask about your opportunities</h2>
           <p class="hint">Rule-based smart filtering over the crawled opportunity list — try "which tenders close this week" or "show me WASH opportunities". This runs locally, no paid AI call.</p>
-          <div class="suggestion-chips" id="suggestionChips"></div>
           <div class="assistant-chat" id="assistantChat"></div>
           <div class="assistant-input-row">
             <input type="text" id="assistantInput" placeholder="Ask a question about opportunities...">
@@ -196,8 +242,99 @@
           <p class="hint">Trigger a check manually, or see when the last automatic run happened.</p>
           <div id="crawlStatusBox" class="status-box"></div>
           <button class="btn accent" id="triggerCrawlBtn" style="margin-top:12px;">Run Crawl Now</button>
-          <button class="btn secondary" id="clearRescanBtn" style="margin-top:8px;">Clear Old Data &amp; Rescan</button>
         </div>
+
+        <div class="panel">
+          <h2>Crawl &amp; Matching</h2>
+          <p class="hint">
+            Schedule fields below are for your own reference only — the actual daily trigger is an external
+            cron-job.org ping (Render's free tier can't be trusted to wake itself on a timer). If you change the
+            time here, update it at cron-job.org too, or it'll keep running on the old schedule.
+          </p>
+          <div class="settings-grid">
+            <div class="field"><label>Match threshold (0–100)</label><input type="number" id="s_match_threshold" min="0" max="100"></div>
+            <div class="field"><label>Min. Ghana job results before checking international</label><input type="number" id="s_min_ghana_job_results" min="0"></div>
+            <div class="field"><label>Feed window (days before an item ages out)</label><input type="number" id="s_feed_window_days" min="1"></div>
+            <div class="field"><label>Crawl schedule time (reference only)</label><input type="text" id="s_crawl_schedule_time" placeholder="07:00"></div>
+            <div class="field"><label>Timezone (reference only)</label><input type="text" id="s_crawl_timezone" placeholder="Africa/Accra"></div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h2>Email Digest</h2>
+          <div class="settings-grid">
+            <div class="field"><label>SMTP host</label><input type="text" id="s_smtp_host" placeholder="smtp.gmail.com"></div>
+            <div class="field"><label>SMTP port</label><input type="number" id="s_smtp_port" placeholder="587"></div>
+            <div class="field"><label>SMTP user</label><input type="text" id="s_smtp_user"></div>
+            <div class="field"><label>SMTP password</label><input type="password" id="s_smtp_password" placeholder="Leave blank to keep current"></div>
+            <div class="field"><label>Digest "from" address</label><input type="text" id="s_digest_from"></div>
+            <div class="field"><label>Recipients (comma-separated)</label><input type="text" id="s_digest_recipients"></div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h2>AI Provider</h2>
+          <div class="settings-grid">
+            <div class="field">
+              <label>Provider</label>
+              <select id="s_ai_provider">
+                <option value="rule-based">Rule-based (free — no API cost)</option>
+              </select>
+            </div>
+          </div>
+          <p class="hint">This app deliberately doesn't call a paid model — see the About panel below for why. This
+          field is here so the option is visible if that ever changes.</p>
+        </div>
+
+        <div class="panel">
+          <h2>Notifications</h2>
+          <div class="checkbox-row"><input type="checkbox" id="s_notify_high_priority"><label for="s_notify_high_priority">New high-priority opportunity (80%+ match)</label></div>
+          <div class="checkbox-row"><input type="checkbox" id="s_notify_deadline_3_days"><label for="s_notify_deadline_3_days">Deadline in 3 days</label></div>
+          <div class="checkbox-row"><input type="checkbox" id="s_notify_donor_watch"><label for="s_notify_donor_watch">Watched-donor alert</label></div>
+          <div class="field" style="margin-left:26px;max-width:400px;"><label>Donor watch keywords (comma-separated)</label><input type="text" id="s_donor_watch_keywords" placeholder="unicef, usaid"></div>
+          <div class="checkbox-row"><input type="checkbox" id="s_notify_scan_complete"><label for="s_notify_scan_complete">Daily scan complete</label></div>
+        </div>
+
+        <div class="panel">
+          <h2>Appearance</h2>
+          <div class="settings-grid">
+            <div class="field">
+              <label>Default theme</label>
+              <select id="s_theme_default">
+                <option value="light">Light</option>
+                <option value="dark">Dark</option>
+                <option value="signature">JMK Signature</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h2>Keyword Management</h2>
+          <p class="hint">These are added on top of the built-in keyword lists — they don't replace them.</p>
+          <div class="field">
+            <label>Sector to add keywords to</label>
+            <select id="kw_sector_select"></select>
+          </div>
+          <div class="field">
+            <label>Extra keywords for this sector (comma-separated)</label>
+            <textarea id="kw_sector_extra" rows="2"></textarea>
+          </div>
+          <div class="field">
+            <label>Extra consultancy / tender role keywords (comma-separated)</label>
+            <textarea id="s_extra_role_keywords" rows="2"></textarea>
+          </div>
+          <div class="field">
+            <label>Extra exclude / negative keywords (comma-separated)</label>
+            <textarea id="s_extra_negative_keywords" rows="2"></textarea>
+          </div>
+        </div>
+
+        <div class="panel">
+          <button class="btn accent" id="saveSettingsBtn">Save Settings</button>
+          <span class="hint" id="settingsSavedNote" style="margin-left:12px;"></span>
+        </div>
+
         <div class="panel">
           <h2>About this platform</h2>
           <p class="hint">JMK Tender Monitor AI uses free, rule-based matching — not a paid language model — to find and
@@ -237,8 +374,7 @@
 <script>
   window.JMK_SECTORS = {{ sectors | tojson }};
   window.JMK_STATUSES = {{ statuses | tojson }};
-  window.JMK_CRON_SECRET = {{ cron_secret | tojson }};
 </script>
-<script src="/static/app.js?v=9"></script>
+<script src="/static/app.js?v=10"></script>
 </body>
 </html>
