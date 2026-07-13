@@ -2,9 +2,10 @@
 Database connection setup.
 
 DATABASE_URL should point at your Supabase Postgres instance in production
-(see README for how to get this connection string). Falls back to a local
-SQLite file if DATABASE_URL isn't set, so the backend can run and be tested
-without a real database during development.
+(use the Session pooler connection string — Render's free tier doesn't
+reliably route the direct connection's IPv6 address). Falls back to a
+local SQLite file if DATABASE_URL isn't set, so the backend can run and be
+tested without a real database during development.
 """
 import os
 from sqlalchemy import create_engine
