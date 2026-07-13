@@ -1,9 +1,10 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
 
 from ..database import get_db
 from .. import models
+from ..config import settings
 from ..schemas import OpportunityOut
 
 router = APIRouter(prefix="/api/opportunities", tags=["opportunities"])
@@ -16,6 +17,19 @@ def list_opportunities(kind: str | None = None, db: Session = Depends(get_db)):
         q = q.filter(models.Opportunity.kind == kind)
     q = q.order_by(desc(models.Opportunity.match_score))
     return q.limit(200).all()
+
+
+@router.delete("")
+def clear_opportunities(token: str = Query(default=""), db: Session = Depends(get_db)):
+    """Used by Settings → 'Clear Old Data & Rescan'. Deletes every crawled
+    opportunity (not Pipeline items) so the next crawl starts from a clean
+    slate. Same token used to trigger a crawl, since this is just as
+    destructive."""
+    if settings.CRON_SECRET and token != settings.CRON_SECRET:
+        raise HTTPException(401, "unauthorized")
+    deleted = db.query(models.Opportunity).delete()
+    db.commit()
+    return {"deleted": deleted}
 
 
 @router.get("/stats")
@@ -55,7 +69,9 @@ def opportunity_stats(db: Session = Depends(get_db)):
                 new_today += 1
             if fs_date.year == today.year and fs_date.month == today.month:
                 this_month_count += 1
-        if item.budget_text:
+        # budget presence is folded into match_reason text (e.g. "Budget 5/5 (USD 45,000)")
+        # rather than a separate column, to avoid another Supabase table recreate
+        if "Budget 5/5 (" in (item.match_reason or ""):
             budget_known_count += 1
 
     high_priority = len([i for i in all_items if i.match_score >= 80])
@@ -116,7 +132,7 @@ def opportunity_stats(db: Session = Depends(get_db)):
             if ws in weeks:
                 sector_trend_series[item.sector][weeks.index(ws)] += 1
 
-    # ---------- chart: country distribution ----------
+    # ---------- chart: country / location distribution ----------
     location_counts = Counter((i.location or "Not specified") for i in all_items)
     top_locations = location_counts.most_common(5)
     other_count = sum(c for _, c in location_counts.most_common()[5:])
