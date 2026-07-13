@@ -23,7 +23,6 @@ const SOURCES = [
 
 let editingId = null;
 let pipelineItems = [];
-let quickFilter = 'all';
 
 function escapeHtml(s){
   return (s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -44,6 +43,9 @@ function deadlineChip(deadline){
   if(dl !== null && dl <= 7) cls = 'urgent';
   return `<span class="chip ${cls}">${label} · ${dl}d</span>`;
 }
+function shortDate(dateStr){
+  return new Date(dateStr+'T00:00:00').toLocaleDateString('en-GB',{day:'2-digit',month:'short'});
+}
 function starRating(score){
   const stars = Math.round((score||0) / 20);
   return '★'.repeat(stars) + '☆'.repeat(5 - stars);
@@ -59,6 +61,7 @@ function initials(name){
   const parts = name.trim().split(/\s+/).filter(Boolean);
   return ((parts[0]||'')[0] + (parts[1] ? parts[1][0] : (parts[0]||'')[1] || '')).toUpperCase();
 }
+const CHART_COLORS = ['#283088','#F06020','#2E6B4F','#6B4FA0','#B0472E','#1D6E8F','#9B9FC0','#C23B23'];
 
 // ---------- theme ----------
 const THEME_ORDER = ['light', 'dark', 'signature'];
@@ -90,7 +93,7 @@ const SECTION_META = {
   pipeline: ["Pipeline", "Opportunities you're actively tracking, from intake to award"],
   assistant: ["AI Assistant", "Ask questions about the current opportunity list"],
   sources: ["Source Watchlist", "Where the daily crawl looks — Ghana platforms first"],
-  settings: ["Settings", "Crawl controls and platform info"],
+  settings: ["Settings", "Crawl controls, matching, notifications, and platform info"],
 };
 function switchSection(section){
   document.querySelectorAll('.nav-item').forEach(b => b.classList.toggle('active', b.dataset.section === section));
@@ -102,13 +105,13 @@ function switchSection(section){
   }
   if(section === 'opportunities') loadAllOpportunities();
   if(section === 'pipeline') loadPipeline();
-  if(section === 'settings') loadCrawlStatus('crawlStatusBox');
-  if(section === 'sources') renderSources();
+  if(section === 'settings'){ loadCrawlStatus('crawlStatusBox'); loadSettings(); }
 }
 
 // ---------- dashboard ----------
 let sectorChartInstance = null;
 let dashboardOpportunities = [];
+let analyticsChartInstances = {};
 
 function greet(){
   const hour = new Date().getHours();
@@ -125,27 +128,24 @@ async function loadDashboard(){
   }catch(e){ console.error(e); }
 
   document.getElementById('kpiGrid').innerHTML = `
-    <div class="kpi-card clickable" data-quick="all"><div class="num">${stats.totalOpportunities ?? 0}</div><div class="lbl">Opportunities found</div></div>
-    <div class="kpi-card orange clickable" data-quick="highPriority"><div class="num">${stats.highPriority ?? 0}</div><div class="lbl">High priority</div></div>
-    <div class="kpi-card orange clickable" data-quick="closing48h"><div class="num">${stats.closingIn48h ?? 0}</div><div class="lbl">Closing in 48h</div></div>
-    <div class="kpi-card clickable" data-quick="hasDonor"><div class="num">${stats.activeDonors ?? 0}</div><div class="lbl">Active donors</div></div>
-    <div class="kpi-card clickable" data-quick="all"><div class="num">${stats.averageMatch ?? 0}%</div><div class="lbl">Avg. match score</div></div>
+    <div class="kpi-card"><div class="num">${stats.newToday ?? 0}</div><div class="lbl">New today</div></div>
+    <div class="kpi-card orange"><div class="num">${stats.highPriority ?? 0}</div><div class="lbl">High match</div></div>
+    <div class="kpi-card orange"><div class="num">${stats.closingThisWeek ?? 0}</div><div class="lbl">Closing soon (7 days)</div></div>
+    <div class="kpi-card"><div class="num">${stats.budgetKnownCount ?? 0}</div><div class="lbl">Opportunities with stated budget</div></div>
+    <div class="kpi-card"><div class="num">${stats.activeDonors ?? 0}</div><div class="lbl">Active donors</div></div>
+    <div class="kpi-card"><div class="num">${stats.averageMatch ?? 0}%</div><div class="lbl">Avg. match score</div></div>
+    <div class="kpi-card"><div class="num">${stats.opportunitiesThisMonth ?? 0}</div><div class="lbl">Opportunities this month</div></div>
   `;
-  document.querySelectorAll('#kpiGrid .kpi-card').forEach(card => {
-    card.addEventListener('click', () => {
-      quickFilter = card.dataset.quick;
-      switchSection('opportunities');
-    });
-  });
 
   const totalSources = 9 + 8; // tender portals + Ghana job platforms (always checked)
   document.getElementById('scanSummary').textContent =
     `Scanned ${totalSources} sources and found ${stats.totalOpportunities ?? 0} opportunities matching JMK's scope.`;
 
-  try{ buildInsights(stats); }catch(e){ console.error('insights failed', e); }
-  try{ buildSectorChart(stats.sectorBreakdown || {}); }catch(e){ console.error('sector chart failed', e); }
-  try{ buildTopDonors(stats.topDonors || []); }catch(e){ console.error('top donors failed', e); }
-  try{ await loadCrawlStatus('scanStatusMini'); }catch(e){ console.error('scan status failed', e); }
+  buildInsights(stats);
+  buildSectorChart(stats.sectorBreakdown || {});
+  buildTopDonors(stats.topDonors || []);
+  buildAnalyticsCharts(stats);
+  loadCrawlStatus('scanStatusMini');
 
   try{
     dashboardOpportunities = await fetch('/api/opportunities').then(r => r.json());
@@ -161,8 +161,6 @@ function buildInsights(stats){
     if(stats.closingIn48h) bits.push(`<strong>${stats.closingIn48h}</strong> close within 48 hours — worth checking today.`);
     const topSector = Object.entries(stats.sectorBreakdown || {}).sort((a,b) => b[1]-a[1])[0];
     if(topSector) bits.push(`<strong>${escapeHtml(topSector[0])}</strong> is the most active sector right now.`);
-    const topDonorNames = (stats.topDonors || []).slice(0,3).map(d => escapeHtml(d.name));
-    if(topDonorNames.length) bits.push(`Recent postings from <strong>${topDonorNames.join(', ')}</strong>.`);
   } else {
     bits.push('No opportunities yet — run a crawl to populate this dashboard.');
   }
@@ -172,14 +170,7 @@ function buildInsights(stats){
 function buildSectorChart(breakdown){
   const labels = Object.keys(breakdown);
   const data = Object.values(breakdown);
-  const colors = ['#283088','#F06020','#2E6B4F','#6B4FA0','#B0472E','#1D6E8F','#9B9FC0','#C23B23'];
   const ctx = document.getElementById('sectorChart');
-  if(typeof Chart === 'undefined'){
-    document.getElementById('sectorLegend').innerHTML = labels.length
-      ? labels.map((l,i) => `<div class="legend-row"><span>${escapeHtml(l)}</span><span class="amt">${data[i]}</span></div>`).join('')
-      : '<div class="empty" style="padding:10px;">No sector data yet.</div>';
-    return;
-  }
   if(sectorChartInstance) sectorChartInstance.destroy();
   if(labels.length === 0){
     document.getElementById('sectorLegend').innerHTML = '<div class="empty" style="padding:10px;">No sector data yet.</div>';
@@ -187,13 +178,13 @@ function buildSectorChart(breakdown){
   }
   sectorChartInstance = new Chart(ctx, {
     type: 'doughnut',
-    data: { labels, datasets: [{ data, backgroundColor: colors, borderWidth: 0 }] },
+    data: { labels, datasets: [{ data, backgroundColor: CHART_COLORS, borderWidth: 0 }] },
     options: { plugins: { legend: { display: false }, tooltip: { enabled: true } }, cutout: '68%' }
   });
   const total = data.reduce((a,b) => a+b, 0);
   document.getElementById('sectorLegend').innerHTML = labels.map((l, i) => `
     <div class="legend-row">
-      <span class="legend-dot" style="background:${colors[i % colors.length]}"></span>
+      <span class="legend-dot" style="background:${CHART_COLORS[i % CHART_COLORS.length]}"></span>
       <span>${escapeHtml(l)}</span>
       <span class="amt">${data[i]} (${Math.round(data[i]/total*100)}%)</span>
     </div>`).join('');
@@ -217,6 +208,94 @@ function buildTopDonors(donors){
     </div>`).join('');
 }
 
+function destroyChart(key){
+  if(analyticsChartInstances[key]){
+    analyticsChartInstances[key].destroy();
+    analyticsChartInstances[key] = null;
+  }
+}
+
+function buildAnalyticsCharts(stats){
+  const charts = stats.charts || {};
+  const emptyOpts = { plugins:{ legend:{ display:false } }, scales:{ x:{ ticks:{ font:{size:10} } }, y:{ beginAtZero:true, ticks:{ precision:0 } } } };
+
+  // 1. Opportunities — last 30 days
+  destroyChart('last30');
+  const last30 = charts.last30Days || [];
+  analyticsChartInstances.last30 = new Chart(document.getElementById('chartLast30'), {
+    type: 'line',
+    data: { labels: last30.map(d => shortDate(d.date)), datasets: [{ data: last30.map(d => d.count), borderColor: CHART_COLORS[0], backgroundColor: 'transparent', tension: 0.3, pointRadius: 0 }] },
+    options: emptyOpts
+  });
+
+  // 2. Deadlines this week
+  destroyChart('deadlines');
+  const deadlines = charts.deadlinesThisWeek || [];
+  analyticsChartInstances.deadlines = new Chart(document.getElementById('chartDeadlines'), {
+    type: 'bar',
+    data: { labels: deadlines.map(d => shortDate(d.date)), datasets: [{ data: deadlines.map(d => d.count), backgroundColor: CHART_COLORS[1] }] },
+    options: emptyOpts
+  });
+
+  // 3. Opportunities by donor
+  destroyChart('byDonor');
+  const donors = stats.topDonors || [];
+  analyticsChartInstances.byDonor = new Chart(document.getElementById('chartByDonor'), {
+    type: 'bar',
+    data: { labels: donors.map(d => d.name), datasets: [{ data: donors.map(d => d.count), backgroundColor: CHART_COLORS[2] }] },
+    options: { ...emptyOpts, indexAxis: 'y' }
+  });
+
+  // 4. Sector trends
+  destroyChart('sectorTrend');
+  const trend = charts.sectorTrend || { weeks: [], series: {} };
+  const trendDatasets = Object.keys(trend.series || {}).map((sector, i) => ({
+    label: sector, data: trend.series[sector], borderColor: CHART_COLORS[i % CHART_COLORS.length],
+    backgroundColor: 'transparent', tension: 0.3, pointRadius: 0,
+  }));
+  analyticsChartInstances.sectorTrend = new Chart(document.getElementById('chartSectorTrend'), {
+    type: 'line',
+    data: { labels: (trend.weeks || []).map(shortDate), datasets: trendDatasets },
+    options: { plugins:{ legend:{ display: true, position:'bottom', labels:{ font:{size:9}, boxWidth:8 } } }, scales:{ x:{ ticks:{ font:{size:10} } }, y:{ beginAtZero:true, ticks:{ precision:0 } } } }
+  });
+
+  // 5. Country distribution
+  destroyChart('country');
+  const country = charts.countryDistribution || [];
+  analyticsChartInstances.country = new Chart(document.getElementById('chartCountry'), {
+    type: 'bar',
+    data: { labels: country.map(c => c.name), datasets: [{ data: country.map(c => c.count), backgroundColor: CHART_COLORS[3] }] },
+    options: emptyOpts
+  });
+
+  // 6. Average AI match over time
+  destroyChart('avgMatch');
+  const avgMatch = charts.avgMatchOverTime || [];
+  analyticsChartInstances.avgMatch = new Chart(document.getElementById('chartAvgMatch'), {
+    type: 'line',
+    data: { labels: avgMatch.map(d => shortDate(d.date)), datasets: [{ data: avgMatch.map(d => d.average), borderColor: CHART_COLORS[4], backgroundColor: 'transparent', tension: 0.3, pointRadius: 0, spanGaps: true }] },
+    options: { ...emptyOpts, scales:{ x:{ ticks:{ font:{size:10} } }, y:{ beginAtZero:true, max:100 } } }
+  });
+
+  // 7. Pipeline status
+  destroyChart('pipelineStatus');
+  const pipeline = charts.pipelineStatus || [];
+  analyticsChartInstances.pipelineStatus = new Chart(document.getElementById('chartPipelineStatus'), {
+    type: 'bar',
+    data: { labels: pipeline.map(p => p.status), datasets: [{ data: pipeline.map(p => p.count), backgroundColor: CHART_COLORS[5] }] },
+    options: emptyOpts
+  });
+
+  // 8. Monthly activity
+  destroyChart('monthlyActivity');
+  const monthly = charts.monthlyActivity || [];
+  analyticsChartInstances.monthlyActivity = new Chart(document.getElementById('chartMonthlyActivity'), {
+    type: 'bar',
+    data: { labels: monthly.map(m => m.month), datasets: [{ data: monthly.map(m => m.count), backgroundColor: CHART_COLORS[6] }] },
+    options: emptyOpts
+  });
+}
+
 function renderDashboardOpportunities(){
   const search = (document.getElementById('dashSearch').value || '').toLowerCase();
   const sort = document.getElementById('dashSort').value;
@@ -236,16 +315,8 @@ function renderDashboardOpportunities(){
   wireOppCardButtons(document.getElementById('topOpportunities'));
 }
 
-function matchTier(score){
-  if(score >= 90) return {label:'Excellent', cls:'excellent'};
-  if(score >= 80) return {label:'Strong', cls:'strong'};
-  if(score >= 60) return {label:'Moderate', cls:'moderate'};
-  return {label:'Low', cls:'low'};
-}
-
 function renderOppCard(o){
   const orgLine = o.org || (o.kind === 'job' ? 'Employer not specified' : 'Funder not specified');
-  const tier = matchTier(o.match_score);
   return `
     <div class="opp-card">
       <div class="opp-card-head">
@@ -256,18 +327,19 @@ function renderOppCard(o){
             <div class="opp-org">${escapeHtml(orgLine)}${o.location ? ' · ' + escapeHtml(o.location) : ''}</div>
           </div>
           <div class="match-badge">
-            <span class="pct ${tier.cls}">${o.match_score}%</span>
-            <span class="tier-label ${tier.cls}">${tier.label}</span>
+            <span class="pct">${o.match_score}%</span>
+            <span class="stars">${starRating(o.match_score)}</span>
           </div>
         </div>
       </div>
-      <div class="match-bar-track"><div class="match-bar-fill ${tier.cls}" style="width:${o.match_score}%"></div></div>
+      <div class="match-bar-track"><div class="match-bar-fill" style="width:${o.match_score}%"></div></div>
       <div class="opp-meta">
         <span class="chip sector">${escapeHtml(o.sector || 'Unsectored')}</span>
         ${o.source_tier ? `<span class="chip ${o.source_tier === 'International' ? 'intl' : 'ghana'}">${escapeHtml(o.source_tier)}</span>` : ''}
+        ${o.budget_text ? `<span class="chip safe">${escapeHtml(o.budget_text)}</span>` : ''}
         ${deadlineChip(o.deadline)}
       </div>
-      ${o.match_reason ? `<div class="opp-reason"><strong>Why this matches JMK:</strong> ${escapeHtml(o.match_reason)}</div>` : ''}
+      ${o.match_reason ? `<div class="opp-reason">${escapeHtml(o.match_reason)}</div>` : ''}
       <div class="opp-actions">
         <button class="btn secondary small" data-track="${o.id}">+ Track in Pipeline</button>
         ${o.source_url ? `<a href="${escapeHtml(o.source_url)}" target="_blank" rel="noopener">View source ↗</a>` : ''}
@@ -286,42 +358,16 @@ function wireOppCardButtons(container){
 }
 
 // ---------- opportunities (full list) ----------
-const QUICK_FILTER_LABELS = {
-  all: null,
-  highPriority: 'High priority (80%+ match)',
-  closing48h: 'Closing within 48 hours',
-  hasDonor: 'Has an identified donor/employer',
-};
-
-function renderQuickFilterChip(){
-  const el = document.getElementById('quickFilterChip');
-  const label = QUICK_FILTER_LABELS[quickFilter];
-  if(!label){ el.innerHTML = ''; return; }
-  el.innerHTML = `<div class="quick-filter-chip">Filtered: ${escapeHtml(label)} <button type="button" id="clearQuickFilter">✕</button></div>`;
-  document.getElementById('clearQuickFilter').addEventListener('click', () => {
-    quickFilter = 'all';
-    loadAllOpportunities();
-  });
-}
-
 async function loadAllOpportunities(){
   const kind = document.getElementById('filterKind').value;
   const sector = document.getElementById('filterSector').value;
   const params = new URLSearchParams();
   if(kind) params.set('kind', kind);
-  let items = await fetch('/api/opportunities?' + params.toString()).then(r => r.json());
-  if(sector) items = items.filter(o => o.sector === sector);
-  if(quickFilter === 'highPriority') items = items.filter(o => o.match_score >= 80);
-  if(quickFilter === 'closing48h') items = items.filter(o => {
-    if(!o.deadline) return false;
-    const dl = daysLeft(o.deadline);
-    return dl !== null && dl >= 0 && dl <= 2;
-  });
-  if(quickFilter === 'hasDonor') items = items.filter(o => !!o.org);
-  renderQuickFilterChip();
+  const items = await fetch('/api/opportunities?' + params.toString()).then(r => r.json());
+  const filtered = sector ? items.filter(o => o.sector === sector) : items;
   const container = document.getElementById('allOpportunities');
-  container.innerHTML = items.length
-    ? items.map(renderOppCard).join('')
+  container.innerHTML = filtered.length
+    ? filtered.map(renderOppCard).join('')
     : '<div class="empty">No opportunities match these filters yet.</div>';
   wireOppCardButtons(container);
 }
@@ -423,27 +469,6 @@ async function handleDelete(){
 }
 
 // ---------- AI assistant ----------
-const SUGGESTED_QUESTIONS = [
-  "Which tenders close this week?",
-  "Show me jobs closing this month",
-  "WASH opportunities",
-  "Education opportunities",
-  "Governance opportunities",
-  "Gender and social inclusion opportunities",
-  "Agricultural sector tenders",
-  "Show me the best matches",
-];
-function renderSuggestionChips(){
-  const el = document.getElementById('suggestionChips');
-  if(!el) return;
-  el.innerHTML = SUGGESTED_QUESTIONS.map(q => `<button class="suggestion-chip" type="button">${escapeHtml(q)}</button>`).join('');
-  el.querySelectorAll('.suggestion-chip').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.getElementById('assistantInput').value = btn.textContent;
-      askAssistant();
-    });
-  });
-}
 function addChatMsg(text, cls){
   const chat = document.getElementById('assistantChat');
   const div = document.createElement('div');
@@ -468,7 +493,7 @@ async function askAssistant(){
       html += '<div class="opp-grid" style="margin-top:10px;">' + data.results.slice(0,6).map(o => renderOppCard({
         id:o.id, kind:o.kind, title:o.title, org:o.org, sector:o.sector, deadline:o.deadline,
         match_score:o.matchScore, match_reason:o.matchReason, source:o.source, source_url:o.sourceUrl,
-        source_tier:o.sourceTier, location: ''
+        source_tier:o.sourceTier, budget_text:o.budgetText || '', location: ''
       })).join('') + '</div>';
     }
     addChatMsg(html, 'bot');
@@ -479,56 +504,27 @@ async function askAssistant(){
 }
 
 // ---------- sources ----------
-function timeAgo(iso){
-  if(!iso) return 'Not yet scanned';
-  const diffMin = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
-  if(diffMin < 1) return 'Just now';
-  if(diffMin < 60) return `${diffMin}m ago`;
-  const diffHr = Math.round(diffMin / 60);
-  if(diffHr < 24) return `${diffHr}h ago`;
-  return `${Math.round(diffHr / 24)}d ago`;
-}
-
-async function renderSources(){
-  let sourceStats = {};
-  try{
-    const s = await fetch('/api/crawl/status').then(r => r.json());
-    sourceStats = JSON.parse(s.source_stats || '{}');
-  }catch(e){ /* first load, or no crawl yet — show as not-yet-scanned */ }
-
+function renderSources(){
   const groups = {};
   SOURCES.forEach(s => { groups[s.type] = groups[s.type] || []; groups[s.type].push(s); });
   document.getElementById('sourceList').innerHTML = Object.keys(groups).map(type => `
     <div class="source-group">
       <div class="source-group-label">${escapeHtml(type)}</div>
-      ${groups[type].map(s => {
-        const stat = sourceStats[s.name];
-        const ok = stat ? stat.status === 'ok' : null;
-        const dot = ok === null ? '⚪' : (ok ? '🟢' : '🔴');
-        const statusText = ok === null ? 'Not yet scanned' : (ok ? timeAgo(stat.last_checked) : 'Unreachable last run');
-        const newToday = stat ? stat.new_today : null;
-        return `
+      ${groups[type].map(s => `
         <div class="source">
-          <div class="source-row">
-            <a href="${s.url}" target="_blank" rel="noopener">${escapeHtml(s.name)}</a><span class="org">— ${escapeHtml(s.org)}</span>
-          </div>
-          <div class="source-status">
-            <span>${dot} ${escapeHtml(statusText)}</span>
-            ${newToday !== null ? `<span class="new-today">${newToday} new last scan</span>` : ''}
-          </div>
+          <a href="${s.url}" target="_blank" rel="noopener">${escapeHtml(s.name)}</a><span class="org">— ${escapeHtml(s.org)}</span>
           <div class="note">${escapeHtml(s.note)}</div>
-        </div>`;
-      }).join('')}
+        </div>`).join('')}
     </div>`).join('');
 }
 
 // ---------- settings ----------
-function renderCrawlStatusBox(targetId, s){
+async function loadCrawlStatus(targetId){
+  targetId = targetId || 'crawlStatusBox';
   const el = document.getElementById(targetId);
   if(!el) return;
-  const working = s.state === 'running';
+  const s = await fetch('/api/crawl/status').then(r => r.json());
   el.innerHTML = `
-    ${working ? '<div class="agent-working">🔄 Agent is working — checking 17 sources, this can take 1-2 minutes...</div>' : ''}
     <div class="row"><span>State</span><span>${escapeHtml(s.state)}</span></div>
     <div class="row"><span>Tenders in feed</span><span>${s.tenders_in_feed}</span></div>
     <div class="row"><span>Jobs in feed</span><span>${s.jobs_in_feed}</span></div>
@@ -538,56 +534,166 @@ function renderCrawlStatusBox(targetId, s){
     ${s.error ? `<div class="row"><span>Last error</span><span>${escapeHtml(s.error)}</span></div>` : ''}
   `;
 }
-
-async function loadCrawlStatus(targetId){
-  targetId = targetId || 'crawlStatusBox';
-  const s = await fetch('/api/crawl/status').then(r => r.json());
-  renderCrawlStatusBox(targetId, s);
-  return s;
-}
-
 async function triggerCrawl(btnId, statusTargetId){
   const btn = document.getElementById(btnId);
   btn.disabled = true;
-  btn.textContent = '🔄 Agent is working...';
-  const token = window.JMK_CRON_SECRET ? `?token=${encodeURIComponent(window.JMK_CRON_SECRET)}` : '';
-  const res = await fetch('/api/crawl/run' + token, { method: 'POST' }).then(r => r.json());
-
-  if(res.status !== 'started' && res.status !== 'already running'){
-    btn.disabled = false;
-    btn.textContent = 'Run Crawl Now';
-    alert('Could not start the crawl: ' + (res.error || JSON.stringify(res)));
-    return;
-  }
-
-  pollUntilDone(btnId, statusTargetId);
+  btn.textContent = 'Starting...';
+  const res = await fetch('/api/crawl/run', { method: 'POST' }).then(r => r.json());
+  btn.textContent = res.status === 'started' ? 'Crawl running — check back shortly' : 'Run Crawl Now';
+  setTimeout(() => { btn.disabled = false; btn.textContent = 'Run Crawl Now'; loadCrawlStatus(statusTargetId); }, 4000);
 }
 
-async function pollUntilDone(btnId, statusTargetId){
-  const btn = document.getElementById(btnId);
-  const s = await loadCrawlStatus(statusTargetId);
-  if(s.state === 'running'){
-    btn.disabled = true;
-    btn.textContent = '🔄 Agent is working...';
-    setTimeout(() => pollUntilDone(btnId, statusTargetId), 3000);
-  } else {
-    btn.disabled = false;
-    btn.textContent = s.error ? 'Run Crawl Now (last run had an error)' : 'Run Crawl Now';
-    const dashSection = document.getElementById('section-dashboard');
-    if(dashSection && dashSection.classList.contains('active')) loadDashboard();
-  }
+let currentSettings = null;
+
+async function loadSettings(){
+  const s = await fetch('/api/settings').then(r => r.json());
+  currentSettings = s;
+
+  document.getElementById('s_match_threshold').value = s.match_threshold;
+  document.getElementById('s_min_ghana_job_results').value = s.min_ghana_job_results;
+  document.getElementById('s_feed_window_days').value = s.feed_window_days;
+  document.getElementById('s_crawl_schedule_time').value = s.crawl_schedule_time;
+  document.getElementById('s_crawl_timezone').value = s.crawl_timezone;
+
+  document.getElementById('s_smtp_host').value = s.smtp_host;
+  document.getElementById('s_smtp_port').value = s.smtp_port;
+  document.getElementById('s_smtp_user').value = s.smtp_user;
+  document.getElementById('s_smtp_password').value = '';
+  document.getElementById('s_smtp_password').placeholder = s.smtp_password_set ? 'Leave blank to keep current' : 'No password saved yet';
+  document.getElementById('s_digest_from').value = s.digest_from;
+  document.getElementById('s_digest_recipients').value = s.digest_recipients;
+
+  document.getElementById('s_ai_provider').value = s.ai_provider;
+
+  document.getElementById('s_notify_high_priority').checked = s.notify_high_priority;
+  document.getElementById('s_notify_deadline_3_days').checked = s.notify_deadline_3_days;
+  document.getElementById('s_notify_donor_watch').checked = s.notify_donor_watch;
+  document.getElementById('s_donor_watch_keywords').value = s.donor_watch_keywords;
+  document.getElementById('s_notify_scan_complete').checked = s.notify_scan_complete;
+
+  document.getElementById('s_theme_default').value = s.theme_default;
+
+  populateSelect(document.getElementById('kw_sector_select'), SECTORS, false);
+  updateKeywordSectorField();
+  document.getElementById('s_extra_role_keywords').value = s.extra_role_keywords || '';
+  document.getElementById('s_extra_negative_keywords').value = s.extra_negative_keywords || '';
 }
 
-async function clearAndRescan(){
-  const btn = document.getElementById('clearRescanBtn');
-  if(!confirm('This deletes all currently crawled opportunities (not your Pipeline items) and starts a fresh scan. Continue?')) return;
+let lastKwSector = null;
+function updateKeywordSectorField(){
+  if(!currentSettings) return;
+  const sector = document.getElementById('kw_sector_select').value;
+  const extra = currentSettings.extra_sector_keywords || {};
+  document.getElementById('kw_sector_extra').value = extra[sector] || '';
+  lastKwSector = sector;
+}
+function stashKeywordSectorField(){
+  // called just before the sector dropdown switches, so whatever the user
+  // typed for the previous sector isn't silently lost
+  if(!currentSettings || lastKwSector === null) return;
+  if(!currentSettings.extra_sector_keywords) currentSettings.extra_sector_keywords = {};
+  currentSettings.extra_sector_keywords[lastKwSector] = document.getElementById('kw_sector_extra').value.trim();
+}
+
+async function saveSettings(){
+  const btn = document.getElementById('saveSettingsBtn');
   btn.disabled = true;
-  btn.textContent = 'Clearing...';
-  const token = window.JMK_CRON_SECRET ? `?token=${encodeURIComponent(window.JMK_CRON_SECRET)}` : '';
-  await fetch('/api/opportunities' + token, { method: 'DELETE' });
-  btn.textContent = 'Clear Old Data & Rescan';
+  btn.textContent = 'Saving...';
+
+  // fold the current keyword-management sector textarea into the map before saving
+  stashKeywordSectorField();
+  const extraSectorKeywords = { ...(currentSettings?.extra_sector_keywords || {}) };
+
+  const payload = {
+    match_threshold: parseInt(document.getElementById('s_match_threshold').value, 10),
+    min_ghana_job_results: parseInt(document.getElementById('s_min_ghana_job_results').value, 10),
+    feed_window_days: parseInt(document.getElementById('s_feed_window_days').value, 10),
+    crawl_schedule_time: document.getElementById('s_crawl_schedule_time').value.trim(),
+    crawl_timezone: document.getElementById('s_crawl_timezone').value.trim(),
+
+    smtp_host: document.getElementById('s_smtp_host').value.trim(),
+    smtp_port: parseInt(document.getElementById('s_smtp_port').value, 10) || 587,
+    smtp_user: document.getElementById('s_smtp_user').value.trim(),
+    digest_from: document.getElementById('s_digest_from').value.trim(),
+    digest_recipients: document.getElementById('s_digest_recipients').value.trim(),
+
+    ai_provider: document.getElementById('s_ai_provider').value,
+
+    notify_high_priority: document.getElementById('s_notify_high_priority').checked,
+    notify_deadline_3_days: document.getElementById('s_notify_deadline_3_days').checked,
+    notify_donor_watch: document.getElementById('s_notify_donor_watch').checked,
+    donor_watch_keywords: document.getElementById('s_donor_watch_keywords').value.trim(),
+    notify_scan_complete: document.getElementById('s_notify_scan_complete').checked,
+
+    theme_default: document.getElementById('s_theme_default').value,
+
+    extra_sector_keywords: extraSectorKeywords,
+    extra_role_keywords: document.getElementById('s_extra_role_keywords').value.trim(),
+    extra_negative_keywords: document.getElementById('s_extra_negative_keywords').value.trim(),
+  };
+
+  const smtpPassword = document.getElementById('s_smtp_password').value;
+  if(smtpPassword) payload.smtp_password = smtpPassword;
+
+  try{
+    const updated = await fetch('/api/settings', {
+      method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload)
+    }).then(r => r.json());
+    currentSettings = updated;
+    document.getElementById('settingsSavedNote').textContent = 'Saved ✓';
+    setTimeout(() => { document.getElementById('settingsSavedNote').textContent = ''; }, 3000);
+  }catch(e){
+    document.getElementById('settingsSavedNote').textContent = 'Something went wrong saving — try again.';
+  }
   btn.disabled = false;
-  triggerCrawl('triggerCrawlBtn', 'crawlStatusBox');
+  btn.textContent = 'Save Settings';
+}
+
+// ---------- notifications ----------
+function timeAgo(dateStr){
+  if(!dateStr) return '';
+  const diffMs = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.round(diffMs / 60000);
+  if(mins < 1) return 'just now';
+  if(mins < 60) return `${mins}m ago`;
+  const hours = Math.round(mins / 60);
+  if(hours < 24) return `${hours}h ago`;
+  return `${Math.round(hours / 24)}d ago`;
+}
+
+async function loadNotifications(){
+  try{
+    const data = await fetch('/api/notifications').then(r => r.json());
+    const badge = document.getElementById('notifBadge');
+    if(data.unreadCount > 0){
+      badge.style.display = 'flex';
+      badge.textContent = data.unreadCount > 9 ? '9+' : data.unreadCount;
+    } else {
+      badge.style.display = 'none';
+    }
+    const list = document.getElementById('notifList');
+    if(!data.notifications.length){
+      list.innerHTML = '<div class="notif-empty">No notifications yet — they will appear here after the next scan.</div>';
+      return;
+    }
+    list.innerHTML = data.notifications.map(n => `
+      <div class="notif-item ${n.is_read ? '' : 'unread'}" data-id="${n.id}">
+        <div class="notif-title">${escapeHtml(n.title)}</div>
+        <div class="notif-msg">${escapeHtml(n.message)}</div>
+        <div class="notif-time">${timeAgo(n.created_at)}</div>
+      </div>
+    `).join('');
+    list.querySelectorAll('.notif-item').forEach(el => {
+      el.addEventListener('click', async () => {
+        el.classList.remove('unread');
+        await fetch(`/api/notifications/${el.dataset.id}/read`, { method: 'POST' });
+        loadNotifications();
+      });
+    });
+  }catch(e){ console.error(e); }
+}
+function toggleNotifDropdown(){
+  document.getElementById('notifDropdown').classList.toggle('open');
 }
 
 // ---------- init ----------
@@ -595,19 +701,8 @@ document.addEventListener('DOMContentLoaded', () => {
   applyTheme(localStorage.getItem('jmk-theme') || 'light');
   document.getElementById('themeToggle').addEventListener('click', toggleTheme);
 
-  const sidebarEl = document.querySelector('.sidebar');
-  const overlayEl = document.getElementById('sidebarOverlay');
-  function openMobileMenu(){ sidebarEl.classList.add('open'); overlayEl.classList.add('open'); }
-  function closeMobileMenu(){ sidebarEl.classList.remove('open'); overlayEl.classList.remove('open'); }
-  document.getElementById('mobileMenuBtn').addEventListener('click', openMobileMenu);
-  overlayEl.addEventListener('click', closeMobileMenu);
-
   document.querySelectorAll('.nav-item').forEach(btn => {
-    btn.addEventListener('click', () => {
-      if(btn.dataset.section === 'opportunities') quickFilter = 'all';
-      switchSection(btn.dataset.section);
-      closeMobileMenu();
-    });
+    btn.addEventListener('click', () => switchSection(btn.dataset.section));
   });
 
   populateSelect(document.getElementById('filterSector'), SECTORS, true);
@@ -631,13 +726,29 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('assistantInput').addEventListener('keydown', e => { if(e.key === 'Enter') askAssistant(); });
 
   document.getElementById('triggerCrawlBtn').addEventListener('click', () => triggerCrawl('triggerCrawlBtn', 'crawlStatusBox'));
-  document.getElementById('clearRescanBtn').addEventListener('click', clearAndRescan);
-  document.getElementById('runScanTopBtn').addEventListener('click', () => triggerCrawl('runScanTopBtn', 'scanStatusMini'));
+  document.getElementById('runScanMiniBtn').addEventListener('click', () => triggerCrawl('runScanMiniBtn', 'scanStatusMini'));
   document.getElementById('dashSearch').addEventListener('input', renderDashboardOpportunities);
   document.getElementById('dashSort').addEventListener('change', renderDashboardOpportunities);
   document.getElementById('viewAllBtn').addEventListener('click', () => switchSection('opportunities'));
 
+  document.getElementById('saveSettingsBtn').addEventListener('click', saveSettings);
+  document.getElementById('kw_sector_select').addEventListener('change', () => {
+    stashKeywordSectorField();
+    updateKeywordSectorField();
+  });
+
+  document.getElementById('notifBellBtn').addEventListener('click', toggleNotifDropdown);
+  document.getElementById('markAllReadBtn').addEventListener('click', async () => {
+    await fetch('/api/notifications/read-all', { method: 'POST' });
+    loadNotifications();
+  });
+  document.addEventListener('click', (e) => {
+    const wrap = document.querySelector('.notif-wrap');
+    if(wrap && !wrap.contains(e.target)) document.getElementById('notifDropdown').classList.remove('open');
+  });
+
   renderSources();
-  renderSuggestionChips();
   loadDashboard();
+  loadNotifications();
+  setInterval(loadNotifications, 60000);
 });
