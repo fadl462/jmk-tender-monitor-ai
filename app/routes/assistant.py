@@ -27,6 +27,15 @@ TIME_WINDOWS = {
     "next 30 days": 30,
 }
 
+# Common donors/funders active in Ghana's development space — matched
+# case-insensitively so "unicef opportunities" works as well as "UNICEF".
+KNOWN_DONORS = [
+    "unicef", "usaid", "fcdo", "dfid", "koica", "giz", "world bank", "afdb",
+    "undp", "unfpa", "wfp", "who", "eu", "european union", "jica", "danida",
+    "sida", "irish aid", "mastercard foundation", "gates foundation",
+    "global fund", "ausaid", "norad", "kfw", "aecid",
+]
+
 
 @router.post("/ask")
 def ask_assistant(query: AssistantQuery, db: Session = Depends(get_db)):
@@ -37,11 +46,12 @@ def ask_assistant(query: AssistantQuery, db: Session = Depends(get_db)):
     matched_kind = "tender" if "tender" in q else ("job" if "job" in q or "consultanc" in q else None)
     matched_window = next((days for phrase, days in TIME_WINDOWS.items() if phrase in q), None)
 
-    # crude org-name detection: capitalized words in the ORIGINAL question,
-    # excluding common leading words
+    # donor detection: known donor names first (case-insensitive), then fall
+    # back to guessing from capitalized words for anything not on the list
+    matched_donors = [d for d in KNOWN_DONORS if d in q]
     stopwords = {"show", "me", "which", "what", "find", "list", "all", "the", "opportunities",
                  "tenders", "jobs", "closing", "close", "this", "week", "month", "fit", "for"}
-    org_terms = [w.strip(",.?!") for w in query.question.split()
+    org_terms = matched_donors or [w.strip(",.?!") for w in query.question.split()
                  if w[:1].isupper() and w.lower() not in stopwords and len(w) > 2]
 
     results = items
