@@ -7,16 +7,14 @@ Tables:
 - BoardItem: JMK's own working pipeline — things a person has deliberately
   added to track (usually pulled in from an Opportunity, but can also be
   added by hand), with a status like New / Reviewing / Submitted / Won.
-- AppSetting: a simple key/value store for settings that used to be
-  fixed at deploy time (env vars) but are now editable from the Settings
-  page — match threshold, SMTP details, notification preferences, keyword
-  overrides, etc. Each row's `value` is a JSON-encoded string so a single
-  table can hold everything from a number to a list to a nested dict
-  without needing a new column per setting.
-- Notification: in-app notification center entries (new high-priority
-  opportunity, deadline reminders, watched-donor alerts, daily scan
-  complete). `dedup_key` prevents the same alert firing twice (e.g. a
-  "3 days left" reminder for the same opportunity on two different runs).
+- CrawlStatus: singleton row tracking the last crawl run, including
+  per-source live status (source_stats, JSON-encoded) for the Sources page.
+- AppSetting: key/value store for settings that used to be fixed at
+  deploy time (env vars) but are now editable from the Settings page.
+  Each row's `value` is JSON-encoded so one table covers numbers, lists,
+  and nested dicts without a new column per setting.
+- Notification: in-app notification center entries. `dedup_key` prevents
+  the same alert firing twice across crawl runs.
 """
 from sqlalchemy import Column, String, Integer, Float, DateTime, Text
 from sqlalchemy.sql import func
@@ -42,7 +40,6 @@ class Opportunity(Base):
     employment_type = Column(String, default="")
     match_score = Column(Integer, default=0)
     match_reason = Column(Text, default="")
-    budget_text = Column(String, default="")          # best-effort extracted budget/value string, may be blank
     source = Column(String, default="")
     source_url = Column(String, default="")
     source_tier = Column(String, default="")          # "Ghana" or "International" (jobs only)
@@ -78,6 +75,7 @@ class CrawlStatus(Base):
     email_sent = Column(Integer, default=0)  # 0/1 as int for simplicity
     email_note = Column(Text, default="")
     error = Column(Text, default="")
+    source_stats = Column(Text, default="{}")  # JSON: {source_name: {last_checked, new_today, status}}
 
 
 class AppSetting(Base):
