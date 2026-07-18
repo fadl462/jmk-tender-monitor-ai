@@ -134,27 +134,39 @@ async function loadDashboard(){
   let stats = {};
   try{
     stats = await fetch('/api/opportunities/stats', { cache: 'no-store' }).then(r => r.json());
-  }catch(e){ console.error(e); }
+  }catch(e){ console.error('stats fetch failed', e); }
 
-  document.getElementById('kpiGrid').innerHTML = `
-    <div class="kpi-card"><div class="num">${stats.newToday ?? 0}</div><div class="lbl">New today</div></div>
-    <div class="kpi-card orange clickable" data-quick="highPriority"><div class="num">${stats.highPriority ?? 0}</div><div class="lbl">High match</div></div>
-    <div class="kpi-card orange clickable" data-quick="closingSoon"><div class="num">${stats.closingThisWeek ?? 0}</div><div class="lbl">Closing soon (7 days)</div></div>
-    <div class="kpi-card"><div class="num">${stats.budgetKnownCount ?? 0}</div><div class="lbl">Opportunities with stated budget</div></div>
-    <div class="kpi-card clickable" data-quick="hasDonor"><div class="num">${stats.activeDonors ?? 0}</div><div class="lbl">Active donors</div></div>
-    <div class="kpi-card clickable" data-quick="all"><div class="num">${stats.averageMatch ?? 0}%</div><div class="lbl">Avg. match score</div></div>
-    <div class="kpi-card"><div class="num">${stats.opportunitiesThisMonth ?? 0}</div><div class="lbl">Opportunities this month</div></div>
-  `;
-  document.querySelectorAll('#kpiGrid .kpi-card.clickable').forEach(card => {
-    card.addEventListener('click', () => {
-      quickFilter = card.dataset.quick;
-      switchSection('opportunities');
+  const stamp = document.getElementById('dashLastUpdated');
+  // Set this the moment we have stats back, not at the end of the function —
+  // that way, even if something later in this function throws (a chart
+  // failing to build, a card failing to render), the visible KPI numbers and
+  // the "last updated" stamp are never left stuck on a stale/placeholder
+  // state. Each section below is independently try/caught for the same reason.
+  if(stamp) stamp.textContent = 'Live — last updated ' + new Date().toLocaleTimeString('en-GB', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+
+  try{
+    document.getElementById('kpiGrid').innerHTML = `
+      <div class="kpi-card"><div class="num">${stats.newToday ?? 0}</div><div class="lbl">New today</div></div>
+      <div class="kpi-card orange clickable" data-quick="highPriority"><div class="num">${stats.highPriority ?? 0}</div><div class="lbl">High match</div></div>
+      <div class="kpi-card orange clickable" data-quick="closingSoon"><div class="num">${stats.closingThisWeek ?? 0}</div><div class="lbl">Closing soon (7 days)</div></div>
+      <div class="kpi-card"><div class="num">${stats.budgetKnownCount ?? 0}</div><div class="lbl">Opportunities with stated budget</div></div>
+      <div class="kpi-card clickable" data-quick="hasDonor"><div class="num">${stats.activeDonors ?? 0}</div><div class="lbl">Active donors</div></div>
+      <div class="kpi-card clickable" data-quick="all"><div class="num">${stats.averageMatch ?? 0}%</div><div class="lbl">Avg. match score</div></div>
+      <div class="kpi-card"><div class="num">${stats.opportunitiesThisMonth ?? 0}</div><div class="lbl">Opportunities this month</div></div>
+    `;
+    document.querySelectorAll('#kpiGrid .kpi-card.clickable').forEach(card => {
+      card.addEventListener('click', () => {
+        quickFilter = card.dataset.quick;
+        switchSection('opportunities');
+      });
     });
-  });
+  }catch(e){ console.error('kpi grid failed', e); }
 
-  const totalSources = 9 + 8; // tender portals + Ghana job platforms (always checked)
-  document.getElementById('scanSummary').textContent =
-    `Scanned ${totalSources} sources and found ${stats.totalOpportunities ?? 0} opportunities matching JMK's scope.`;
+  try{
+    const totalSources = 9 + 8; // tender portals + Ghana job platforms (always checked)
+    document.getElementById('scanSummary').textContent =
+      `Scanned ${totalSources} sources and found ${stats.totalOpportunities ?? 0} opportunities matching JMK's scope.`;
+  }catch(e){ console.error('scan summary failed', e); }
 
   try{ buildInsights(stats); }catch(e){ console.error('insights failed', e); }
   try{ buildSectorChart(stats.sectorBreakdown || {}); }catch(e){ console.error('sector chart failed', e); }
@@ -164,10 +176,7 @@ async function loadDashboard(){
   try{
     dashboardOpportunities = await fetch('/api/opportunities', { cache: 'no-store' }).then(r => r.json());
   }catch(e){ dashboardOpportunities = []; }
-  renderDashboardOpportunities();
-
-  const stamp = document.getElementById('dashLastUpdated');
-  if(stamp) stamp.textContent = 'Live — last updated ' + new Date().toLocaleTimeString('en-GB', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+  try{ renderDashboardOpportunities(); }catch(e){ console.error('opportunity cards failed', e); }
 }
 
 function buildInsights(stats){
