@@ -126,7 +126,7 @@ async function loadDashboard(){
   greet();
   let stats = {};
   try{
-    stats = await fetch('/api/opportunities/stats').then(r => r.json());
+    stats = await fetch('/api/opportunities/stats', { cache: 'no-store' }).then(r => r.json());
   }catch(e){ console.error(e); }
 
   document.getElementById('kpiGrid').innerHTML = `
@@ -156,7 +156,7 @@ async function loadDashboard(){
   try{ await loadCrawlStatus('scanStatusMini'); }catch(e){ console.error('scan status failed', e); }
 
   try{
-    dashboardOpportunities = await fetch('/api/opportunities').then(r => r.json());
+    dashboardOpportunities = await fetch('/api/opportunities', { cache: 'no-store' }).then(r => r.json());
   }catch(e){ dashboardOpportunities = []; }
   renderDashboardOpportunities();
 }
@@ -397,7 +397,7 @@ async function loadAllOpportunities(){
   const sector = document.getElementById('filterSector').value;
   const params = new URLSearchParams();
   if(kind) params.set('kind', kind);
-  let items = await fetch('/api/opportunities?' + params.toString()).then(r => r.json());
+  let items = await fetch('/api/opportunities?' + params.toString(), { cache: 'no-store' }).then(r => r.json());
   if(sector) items = items.filter(o => o.sector === sector);
   if(quickFilter === 'highPriority') items = items.filter(o => o.match_score >= 80);
   if(quickFilter === 'closing48h') items = items.filter(o => {
@@ -631,36 +631,43 @@ function renderCrawlStatusBox(targetId, s){
 }
 async function loadCrawlStatus(targetId){
   targetId = targetId || 'crawlStatusBox';
-  const s = await fetch('/api/crawl/status').then(r => r.json());
+  const s = await fetch('/api/crawl/status', { cache: 'no-store' }).then(r => r.json());
   renderCrawlStatusBox(targetId, s);
   return s;
 }
 async function triggerCrawl(btnId, statusTargetId){
   const btn = document.getElementById(btnId);
+  const defaultLabel = btn.textContent.trim();
   btn.disabled = true;
   btn.textContent = '🔄 Agent is working...';
   const token = window.JMK_CRON_SECRET ? `?token=${encodeURIComponent(window.JMK_CRON_SECRET)}` : '';
-  const res = await fetch('/api/crawl/run' + token, { method: 'POST' }).then(r => r.json());
+  const res = await fetch('/api/crawl/run' + token, { method: 'POST', cache: 'no-store' }).then(r => r.json());
   if(res.status !== 'started' && res.status !== 'already running'){
     btn.disabled = false;
-    btn.textContent = 'Run Crawl Now';
+    btn.textContent = defaultLabel;
     alert('Could not start the crawl: ' + (res.error || JSON.stringify(res)));
     return;
   }
-  pollUntilDone(btnId, statusTargetId);
+  pollUntilDone(btnId, statusTargetId, defaultLabel);
 }
-async function pollUntilDone(btnId, statusTargetId){
+async function pollUntilDone(btnId, statusTargetId, defaultLabel){
   const btn = document.getElementById(btnId);
   const s = await loadCrawlStatus(statusTargetId);
   if(s.state === 'running'){
     btn.disabled = true;
     btn.textContent = '🔄 Agent is working...';
-    setTimeout(() => pollUntilDone(btnId, statusTargetId), 3000);
+    setTimeout(() => pollUntilDone(btnId, statusTargetId, defaultLabel), 3000);
   } else {
     btn.disabled = false;
-    btn.textContent = s.error ? 'Run Crawl Now (last run had an error)' : 'Run Crawl Now';
-    const dashSection = document.getElementById('section-dashboard');
-    if(dashSection && dashSection.classList.contains('active')) loadDashboard();
+    btn.textContent = s.error ? `${defaultLabel} (last run had an error)` : defaultLabel;
+    // Always refresh — not just when the dashboard happens to be the visible
+    // section. Gating this on "is dashboard active" was the reason KPI
+    // numbers could sit stale after a scan: if that check ever missed
+    // (tab switched, timing), nothing else ever re-triggered the refresh,
+    // so cards kept showing whatever was on screen at the last page load.
+    loadDashboard();
+    if(document.getElementById('section-opportunities')?.classList.contains('active')) loadAllOpportunities();
+    if(document.getElementById('section-sources')?.classList.contains('active')) renderSources();
     loadNotifications();
   }
 }
