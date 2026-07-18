@@ -158,6 +158,9 @@ async function loadDashboard(){
     dashboardOpportunities = await fetch('/api/opportunities', { cache: 'no-store' }).then(r => r.json());
   }catch(e){ dashboardOpportunities = []; }
   renderDashboardOpportunities();
+
+  const stamp = document.getElementById('dashLastUpdated');
+  if(stamp) stamp.textContent = 'Live — last updated ' + new Date().toLocaleTimeString('en-GB', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
 }
 
 function buildInsights(stats){
@@ -899,4 +902,12 @@ document.addEventListener('DOMContentLoaded', () => {
   loadDashboard();
   loadNotifications();
   setInterval(loadNotifications, 60000);
+  // Automatic daily/twice-daily crawls happen via an external cron ping, with
+  // nobody necessarily watching this page when they run. Refresh the
+  // dashboard periodically so anyone who leaves it open sees new data land
+  // without needing to click anything or reload.
+  setInterval(() => {
+    const dashSection = document.getElementById('section-dashboard');
+    if(dashSection && dashSection.classList.contains('active')) loadDashboard();
+  }, 30000);
 });
