@@ -153,7 +153,6 @@ async function loadDashboard(){
   try{ buildSectorChart(stats.sectorBreakdown || {}); }catch(e){ console.error('sector chart failed', e); }
   try{ buildTopDonors(stats.topDonors || []); }catch(e){ console.error('top donors failed', e); }
   try{ buildAnalyticsCharts(stats); }catch(e){ console.error('analytics charts failed', e); }
-  try{ await loadCrawlStatus('scanStatusMini'); }catch(e){ console.error('scan status failed', e); }
 
   try{
     dashboardOpportunities = await fetch('/api/opportunities', { cache: 'no-store' }).then(r => r.json());
@@ -871,7 +870,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   document.getElementById('triggerCrawlBtn').addEventListener('click', () => triggerCrawl('triggerCrawlBtn', 'crawlStatusBox'));
   document.getElementById('clearRescanBtn').addEventListener('click', clearAndRescan);
-  document.getElementById('runScanTopBtn').addEventListener('click', () => triggerCrawl('runScanTopBtn', 'scanStatusMini'));
+  document.getElementById('runScanTopBtn').addEventListener('click', () => triggerCrawl('runScanTopBtn', 'crawlStatusBox'));
   document.getElementById('dashSearch').addEventListener('input', renderDashboardOpportunities);
   document.getElementById('dashSort').addEventListener('change', renderDashboardOpportunities);
   document.getElementById('viewAllBtn').addEventListener('click', () => switchSection('opportunities'));
