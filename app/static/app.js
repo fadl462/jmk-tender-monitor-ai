@@ -57,6 +57,13 @@ function avatarColor(name){
   for(let i=0;i<(name||'').length;i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
   return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
 }
+function hexToRgba(hex, alpha){
+  const h = hex.replace('#','');
+  const r = parseInt(h.substring(0,2),16);
+  const g = parseInt(h.substring(2,4),16);
+  const b = parseInt(h.substring(4,6),16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
 function initials(name){
   if(!name) return '—';
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -184,8 +191,20 @@ function buildSectorChart(breakdown){
   const data = Object.values(breakdown);
   const ctx = document.getElementById('sectorChart');
   if(typeof Chart === 'undefined'){
+    const total0 = data.reduce((a,b) => a+b, 0);
     document.getElementById('sectorLegend').innerHTML = labels.length
-      ? labels.map((l,i) => `<div class="legend-row"><span>${escapeHtml(l)}</span><span class="amt">${data[i]}</span></div>`).join('')
+      ? labels.map((l,i) => {
+          const color = CHART_COLORS[i % CHART_COLORS.length];
+          const pct = total0 ? Math.round(data[i]/total0*100) : 0;
+          return `<div class="legend-row">
+            <span class="legend-dot" style="background:${color}"></span>
+            <div class="legend-info">
+              <div class="legend-name">${escapeHtml(l)}</div>
+              <div class="legend-bar-track"><div class="legend-bar-fill" style="width:${pct}%;background:${color}"></div></div>
+            </div>
+            <span class="legend-amt" style="background:${hexToRgba(color,0.15)};color:${color}">${data[i]} · ${pct}%</span>
+          </div>`;
+        }).join('')
       : '<div class="empty" style="padding:10px;">No sector data yet.</div>';
     return;
   }
@@ -200,12 +219,19 @@ function buildSectorChart(breakdown){
     options: { plugins: { legend: { display: false }, tooltip: { enabled: true } }, cutout: '68%' }
   });
   const total = data.reduce((a,b) => a+b, 0);
-  document.getElementById('sectorLegend').innerHTML = labels.map((l, i) => `
+  document.getElementById('sectorLegend').innerHTML = labels.map((l, i) => {
+    const color = CHART_COLORS[i % CHART_COLORS.length];
+    const pct = Math.round(data[i]/total*100);
+    return `
     <div class="legend-row">
-      <span class="legend-dot" style="background:${CHART_COLORS[i % CHART_COLORS.length]}"></span>
-      <span>${escapeHtml(l)}</span>
-      <span class="amt">${data[i]} (${Math.round(data[i]/total*100)}%)</span>
-    </div>`).join('');
+      <span class="legend-dot" style="background:${color}"></span>
+      <div class="legend-info">
+        <div class="legend-name">${escapeHtml(l)}</div>
+        <div class="legend-bar-track"><div class="legend-bar-fill" style="width:${pct}%;background:${color}"></div></div>
+      </div>
+      <span class="legend-amt" style="background:${hexToRgba(color,0.15)};color:${color}">${data[i]} · ${pct}%</span>
+    </div>`;
+  }).join('');
 }
 
 function buildTopDonors(donors){
