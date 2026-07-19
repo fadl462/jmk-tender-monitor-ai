@@ -146,13 +146,13 @@ async function loadDashboard(){
 
   try{
     document.getElementById('kpiGrid').innerHTML = `
-      <div class="kpi-card"><div class="num">${stats.newToday ?? 0}</div><div class="lbl">New today</div></div>
+      <div class="kpi-card clickable" data-quick="newToday"><div class="num">${stats.newToday ?? 0}</div><div class="lbl">New today</div></div>
       <div class="kpi-card orange clickable" data-quick="highPriority"><div class="num">${stats.highPriority ?? 0}</div><div class="lbl">High match</div></div>
       <div class="kpi-card orange clickable" data-quick="closingSoon"><div class="num">${stats.closingThisWeek ?? 0}</div><div class="lbl">Closing soon (7 days)</div></div>
-      <div class="kpi-card"><div class="num">${stats.budgetKnownCount ?? 0}</div><div class="lbl">Opportunities with stated budget</div></div>
+      <div class="kpi-card clickable" data-quick="hasBudget"><div class="num">${stats.budgetKnownCount ?? 0}</div><div class="lbl">Opportunities with stated budget</div></div>
       <div class="kpi-card clickable" data-quick="hasDonor"><div class="num">${stats.activeDonors ?? 0}</div><div class="lbl">Active donors</div></div>
       <div class="kpi-card clickable" data-quick="all"><div class="num">${stats.averageMatch ?? 0}%</div><div class="lbl">Avg. match score</div></div>
-      <div class="kpi-card"><div class="num">${stats.opportunitiesThisMonth ?? 0}</div><div class="lbl">Opportunities this month</div></div>
+      <div class="kpi-card clickable" data-quick="thisMonth"><div class="num">${stats.opportunitiesThisMonth ?? 0}</div><div class="lbl">Opportunities this month</div></div>
     `;
     document.querySelectorAll('#kpiGrid .kpi-card.clickable').forEach(card => {
       card.addEventListener('click', () => {
@@ -225,14 +225,19 @@ function buildSectorChart(breakdown){
   sectorChartInstance = new Chart(ctx, {
     type: 'doughnut',
     data: { labels, datasets: [{ data, backgroundColor: CHART_COLORS, borderWidth: 0 }] },
-    options: { plugins: { legend: { display: false }, tooltip: { enabled: true } }, cutout: '68%' }
+    options: {
+      plugins: { legend: { display: false }, tooltip: { enabled: true } },
+      cutout: '68%',
+      onHover: (evt, els) => { evt.native.target.style.cursor = els.length ? 'pointer' : 'default'; },
+      onClick: (evt, els) => { if(els.length) filterBySector(labels[els[0].index]); },
+    }
   });
   const total = data.reduce((a,b) => a+b, 0);
   document.getElementById('sectorLegend').innerHTML = labels.map((l, i) => {
     const color = CHART_COLORS[i % CHART_COLORS.length];
     const pct = Math.round(data[i]/total*100);
     return `
-    <div class="legend-row">
+    <div class="legend-row clickable" data-sector="${escapeHtml(l)}">
       <span class="legend-dot" style="background:${color}"></span>
       <div class="legend-info">
         <div class="legend-name">${escapeHtml(l)}</div>
@@ -241,6 +246,9 @@ function buildSectorChart(breakdown){
       <span class="legend-amt" style="background:${hexToRgba(color,0.15)};color:${color}">${data[i]} · ${pct}%</span>
     </div>`;
   }).join('');
+  document.querySelectorAll('#sectorLegend .legend-row[data-sector]').forEach(row => {
+    row.addEventListener('click', () => filterBySector(row.dataset.sector));
+  });
 }
 
 function buildTopDonors(donors){
@@ -251,7 +259,7 @@ function buildTopDonors(donors){
   }
   const max = Math.max(...donors.map(d => d.count));
   container.innerHTML = donors.map(d => `
-    <div class="donor-row">
+    <div class="donor-row clickable" data-donor="${escapeHtml(d.name)}">
       <div class="donor-avatar" style="background:${avatarColor(d.name)}">${initials(d.name)}</div>
       <div class="donor-info">
         <div class="donor-name">${escapeHtml(d.name)}</div>
@@ -259,6 +267,9 @@ function buildTopDonors(donors){
       </div>
       <div class="donor-count">${d.count}</div>
     </div>`).join('');
+  container.querySelectorAll('.donor-row[data-donor]').forEach(row => {
+    row.addEventListener('click', () => filterByDonor(row.dataset.donor));
+  });
 }
 
 function destroyChart(key){
@@ -294,19 +305,28 @@ function buildAnalyticsCharts(stats){
   analyticsChartInstances.byDonor = new Chart(document.getElementById('chartByDonor'), {
     type: 'bar',
     data: { labels: donors.map(d => d.name), datasets: [{ data: donors.map(d => d.count), backgroundColor: CHART_COLORS[2] }] },
-    options: { ...emptyOpts, indexAxis: 'y' }
+    options: {
+      ...emptyOpts, indexAxis: 'y',
+      onHover: (evt, els) => { evt.native.target.style.cursor = els.length ? 'pointer' : 'default'; },
+      onClick: (evt, els) => { if(els.length) filterByDonor(donors[els[0].index].name); },
+    }
   });
 
   destroyChart('sectorTrend');
   const trend = charts.sectorTrend || { weeks: [], series: {} };
-  const trendDatasets = Object.keys(trend.series || {}).map((sector, i) => ({
+  const trendSectorNames = Object.keys(trend.series || {});
+  const trendDatasets = trendSectorNames.map((sector, i) => ({
     label: sector, data: trend.series[sector], borderColor: CHART_COLORS[i % CHART_COLORS.length],
     backgroundColor: 'transparent', tension: 0.3, pointRadius: 0,
   }));
   analyticsChartInstances.sectorTrend = new Chart(document.getElementById('chartSectorTrend'), {
     type: 'line',
     data: { labels: (trend.weeks || []).map(shortDate), datasets: trendDatasets },
-    options: { plugins:{ legend:{ display: true, position:'bottom', labels:{ font:{size:9}, boxWidth:8 } } }, scales:{ x:{ ticks:{ font:{size:10} } }, y:{ beginAtZero:true, ticks:{ precision:0 } } } }
+    options: {
+      plugins:{ legend:{ display: true, position:'bottom', labels:{ font:{size:9}, boxWidth:8 },
+        onClick: (evt, item) => filterBySector(trendSectorNames[item.datasetIndex]) } },
+      scales:{ x:{ ticks:{ font:{size:10} } }, y:{ beginAtZero:true, ticks:{ precision:0 } } }
+    }
   });
 
   destroyChart('country');
@@ -326,11 +346,19 @@ function buildAnalyticsCharts(stats){
   });
 
   destroyChart('pipelineStatus');
-  const pipeline = charts.pipelineStatus || [];
+  const pipelineStatusData = charts.pipelineStatus || [];
   analyticsChartInstances.pipelineStatus = new Chart(document.getElementById('chartPipelineStatus'), {
     type: 'bar',
-    data: { labels: pipeline.map(p => p.status), datasets: [{ data: pipeline.map(p => p.count), backgroundColor: CHART_COLORS[5] }] },
-    options: emptyOpts
+    data: { labels: pipelineStatusData.map(p => p.status), datasets: [{ data: pipelineStatusData.map(p => p.count), backgroundColor: CHART_COLORS[5] }] },
+    options: {
+      ...emptyOpts,
+      onHover: (evt, els) => { evt.native.target.style.cursor = els.length ? 'pointer' : 'default'; },
+      onClick: (evt, els) => {
+        if(!els.length) return;
+        document.getElementById('pipelineFilterStatus').value = pipelineStatusData[els[0].index].status;
+        switchSection('pipeline');
+      },
+    }
   });
 
   destroyChart('monthlyActivity');
@@ -388,7 +416,7 @@ function renderOppCard(o){
       </div>
       <div class="match-bar-track"><div class="match-bar-fill ${tier.cls}" style="width:${o.match_score}%"></div></div>
       <div class="opp-meta">
-        <span class="chip sector">${escapeHtml(o.sector || 'Unsectored')}</span>
+        <span class="chip sector clickable" data-sector-chip="${escapeHtml(o.sector || '')}">${escapeHtml(o.sector || 'Unsectored')}</span>
         ${o.source_tier ? `<span class="chip ${o.source_tier === 'International' ? 'intl' : 'ghana'}">${escapeHtml(o.source_tier)}</span>` : ''}
         ${deadlineChip(o.deadline)}
       </div>
@@ -401,6 +429,10 @@ function renderOppCard(o){
 }
 
 function wireOppCardButtons(container){
+  container.querySelectorAll('[data-sector-chip]').forEach(chip => {
+    if(!chip.dataset.sectorChip) return;
+    chip.addEventListener('click', () => filterBySector(chip.dataset.sectorChip));
+  });
   container.querySelectorAll('[data-track]').forEach(btn => {
     btn.addEventListener('click', async () => {
       btn.disabled = true;
@@ -413,29 +445,57 @@ function wireOppCardButtons(container){
 // ---------- opportunities (full list) ----------
 const QUICK_FILTER_LABELS = {
   all: null,
+  newToday: 'New today',
   highPriority: 'High priority (80%+ match)',
   closing48h: 'Closing within 48 hours',
   closingSoon: 'Closing soon (within 7 days)',
+  hasBudget: 'Has a stated budget',
   hasDonor: 'Has an identified donor/employer',
+  thisMonth: 'Found this month',
 };
 function renderQuickFilterChip(){
   const el = document.getElementById('quickFilterChip');
   if(!el) return;
+  const search = document.getElementById('oppSearch')?.value || '';
+  const bits = [];
   const label = QUICK_FILTER_LABELS[quickFilter];
-  if(!label){ el.innerHTML = ''; return; }
-  el.innerHTML = `<div class="quick-filter-chip">Filtered: ${escapeHtml(label)} <button type="button" id="clearQuickFilter">✕</button></div>`;
-  document.getElementById('clearQuickFilter').addEventListener('click', () => {
-    quickFilter = 'all';
-    loadAllOpportunities();
+  if(label) bits.push({ text: label, clear: 'quick' });
+  if(search) bits.push({ text: `Search: "${search}"`, clear: 'search' });
+  if(!bits.length){ el.innerHTML = ''; return; }
+  el.innerHTML = bits.map(b => `<div class="quick-filter-chip">Filtered: ${escapeHtml(b.text)} <button type="button" data-clear="${b.clear}">✕</button></div>`).join(' ');
+  el.querySelectorAll('[data-clear]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if(btn.dataset.clear === 'quick') quickFilter = 'all';
+      if(btn.dataset.clear === 'search') document.getElementById('oppSearch').value = '';
+      loadAllOpportunities();
+    });
   });
+}
+function filterBySector(sectorName){
+  quickFilter = 'all';
+  document.getElementById('oppSearch').value = '';
+  document.getElementById('filterSector').value = sectorName;
+  switchSection('opportunities');
+}
+function filterByDonor(donorName){
+  quickFilter = 'all';
+  document.getElementById('oppSearch').value = donorName;
+  document.getElementById('filterSector').value = '';
+  switchSection('opportunities');
 }
 async function loadAllOpportunities(){
   const kind = document.getElementById('filterKind').value;
   const sector = document.getElementById('filterSector').value;
+  const search = (document.getElementById('oppSearch')?.value || '').toLowerCase();
   const params = new URLSearchParams();
   if(kind) params.set('kind', kind);
   let items = await fetch('/api/opportunities?' + params.toString(), { cache: 'no-store' }).then(r => r.json());
   if(sector) items = items.filter(o => o.sector === sector);
+  if(search) items = items.filter(o =>
+    (o.title||'').toLowerCase().includes(search) ||
+    (o.org||'').toLowerCase().includes(search) ||
+    (o.sector||'').toLowerCase().includes(search)
+  );
   if(quickFilter === 'highPriority') items = items.filter(o => o.match_score >= 80);
   if(quickFilter === 'closing48h') items = items.filter(o => {
     if(!o.deadline) return false;
@@ -448,6 +508,15 @@ async function loadAllOpportunities(){
     return dl !== null && dl >= 0 && dl <= 7;
   });
   if(quickFilter === 'hasDonor') items = items.filter(o => !!o.org);
+  if(quickFilter === 'hasBudget') items = items.filter(o => (o.match_reason || '').includes('Budget 5/5 ('));
+  if(quickFilter === 'newToday') items = items.filter(o => {
+    if(!o.first_seen) return false;
+    return new Date(o.first_seen).toISOString().slice(0,10) === new Date().toISOString().slice(0,10);
+  });
+  if(quickFilter === 'thisMonth') items = items.filter(o => {
+    if(!o.first_seen) return false;
+    return new Date(o.first_seen).toISOString().slice(0,7) === new Date().toISOString().slice(0,7);
+  });
   renderQuickFilterChip();
   const container = document.getElementById('allOpportunities');
   container.innerHTML = items.length
@@ -471,7 +540,7 @@ function renderPipeline(){
     return;
   }
   container.innerHTML = list.map(item => `
-    <div class="pipe-item" data-id="${item.id}">
+    <div class="pipe-item clickable" data-id="${item.id}">
       <div class="pipe-top">
         <div>
           <p class="pipe-title">${escapeHtml(item.title)}</p>
@@ -489,6 +558,7 @@ function renderPipeline(){
     </div>
   `).join('');
   container.querySelectorAll('.status-select').forEach(sel => {
+    sel.addEventListener('click', e => e.stopPropagation());
     sel.addEventListener('change', async e => {
       await fetch(`/api/board/${e.target.dataset.id}`, {
         method: 'PUT', headers: {'Content-Type':'application/json'},
@@ -498,7 +568,10 @@ function renderPipeline(){
     });
   });
   container.querySelectorAll('[data-edit]').forEach(btn => {
-    btn.addEventListener('click', () => openForm(btn.dataset.edit));
+    btn.addEventListener('click', e => { e.stopPropagation(); openForm(btn.dataset.edit); });
+  });
+  container.querySelectorAll('.pipe-item').forEach(card => {
+    card.addEventListener('click', () => openForm(card.dataset.id));
   });
 }
 
@@ -636,7 +709,7 @@ async function renderSources(){
         const statusText = ok === null ? 'Not yet scanned' : (ok ? timeAgo(stat.last_checked) : 'Unreachable last run');
         const newToday = stat ? stat.new_today : null;
         return `
-        <div class="source">
+        <div class="source clickable" data-url="${escapeHtml(s.url)}">
           <div class="source-row">
             <a href="${s.url}" target="_blank" rel="noopener">${escapeHtml(s.name)}</a><span class="org">— ${escapeHtml(s.org)}</span>
           </div>
@@ -648,6 +721,12 @@ async function renderSources(){
         </div>`;
       }).join('')}
     </div>`).join('');
+  document.querySelectorAll('.source[data-url]').forEach(row => {
+    row.addEventListener('click', e => {
+      if(e.target.tagName === 'A') return; // let the link's own navigation handle it
+      window.open(row.dataset.url, '_blank', 'noopener');
+    });
+  });
 }
 
 // ---------- settings ----------
@@ -846,10 +925,10 @@ async function loadNotifications(){
       return;
     }
     list.innerHTML = data.notifications.map(n => `
-      <div class="notif-item ${n.is_read ? '' : 'unread'}" data-id="${n.id}">
+      <div class="notif-item ${n.is_read ? '' : 'unread'}" data-id="${n.id}" data-opp="${escapeHtml(n.opportunity_id || '')}">
         <div class="notif-title">${escapeHtml(n.title)}</div>
         <div class="notif-msg">${escapeHtml(n.message)}</div>
-        <div class="notif-time">${notifTimeAgo(n.created_at)}</div>
+        <div class="notif-time">${notifTimeAgo(n.created_at)}${n.opportunity_id ? ' · click to view' : ''}</div>
       </div>
     `).join('');
     list.querySelectorAll('.notif-item').forEach(el => {
@@ -857,6 +936,13 @@ async function loadNotifications(){
         el.classList.remove('unread');
         await fetch(`/api/notifications/${el.dataset.id}/read`, { method: 'POST' });
         loadNotifications();
+        toggleNotifDropdown();
+        if(el.dataset.opp){
+          quickFilter = 'all';
+          document.getElementById('oppSearch').value = '';
+          document.getElementById('filterSector').value = '';
+          switchSection('opportunities');
+        }
       });
     });
   }catch(e){ console.error(e); }
@@ -922,6 +1008,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('filterKind').addEventListener('change', loadAllOpportunities);
   document.getElementById('filterSector').addEventListener('change', loadAllOpportunities);
   document.getElementById('refreshOppBtn').addEventListener('click', loadAllOpportunities);
+  document.getElementById('oppSearch').addEventListener('input', loadAllOpportunities);
   document.getElementById('pipelineFilterStatus').addEventListener('change', renderPipeline);
 
   document.getElementById('addPipelineBtn').addEventListener('click', () => openForm(null));
