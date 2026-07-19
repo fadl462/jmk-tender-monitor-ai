@@ -251,6 +251,21 @@
         </div>
 
         <div class="panel">
+          <h2>Platform Usage</h2>
+          <p class="hint">There's no login system, so this can't tell you who visited — just how often the dashboard gets opened. "Unique today" is a rough estimate based on distinct IP addresses, not real accounts.</p>
+          <div class="settings-grid" style="margin-bottom:16px;">
+            <div class="field"><label>Visits today</label><div class="usage-num" id="usageToday">—</div></div>
+            <div class="field"><label>Unique today (approx.)</label><div class="usage-num" id="usageUniqueToday">—</div></div>
+            <div class="field"><label>Visits this week</label><div class="usage-num" id="usageWeek">—</div></div>
+            <div class="field"><label>All-time visits</label><div class="usage-num" id="usageAllTime">—</div></div>
+          </div>
+          <div class="chart-box">
+            <h3>Visits — last 14 days</h3>
+            <canvas id="chartTraffic"></canvas>
+          </div>
+        </div>
+
+        <div class="panel">
           <h2>Crawl &amp; Matching</h2>
           <p class="hint">
             Schedule fields below are for your own reference only — the actual daily trigger is an external
