@@ -735,24 +735,24 @@ function renderScanTicker(s){
   let sourceStats = {};
   try{ sourceStats = JSON.parse(s.source_stats || '{}'); }catch(e){}
   const names = Object.keys(sourceStats);
-  const recent = names.slice(-6).reverse();
+  const lastDone = names.length ? names[names.length - 1] : '';
+  const lastOk = lastDone && sourceStats[lastDone] && sourceStats[lastDone].status === 'ok';
   const total = s.sources_total || 0;
   const done = s.sources_done || 0;
   const pct = total ? Math.min(100, Math.round(done/total*100)) : 0;
+
+  const statusText = s.current_source
+    ? `Checking <strong>${escapeHtml(s.current_source)}</strong>&hellip;`
+    : 'Starting scan&hellip;';
+  const lastText = lastDone ? ` &nbsp;·&nbsp; last: ${lastOk ? '✓' : '✕'} ${escapeHtml(lastDone)}` : '';
+
   return `
-    <div class="scan-ticker-box">
-      <div class="scan-ticker-head">
+    <div class="scan-ticker-line">
+      <div class="scan-ticker-fill" style="width:${pct}%"></div>
+      <div class="scan-ticker-text">
         <span class="scan-pulse-dot"></span>
-        <span class="scan-current">${s.current_source ? `Checking <strong>${escapeHtml(s.current_source)}</strong>&hellip;` : 'Starting scan&hellip;'}</span>
+        <span class="scan-current">${statusText}${lastText}</span>
         <span class="scan-count">${done}/${total || '?'}</span>
-      </div>
-      <div class="scan-progress-track"><div class="scan-progress-fill" style="width:${pct}%"></div></div>
-      <div class="scan-ticker-list">
-        ${recent.map(name => {
-          const st = sourceStats[name];
-          const ok = st && st.status === 'ok';
-          return `<div class="scan-ticker-item ${ok ? 'ok' : 'fail'}"><span>${ok ? '✓' : '✕'}</span> ${escapeHtml(name)}</div>`;
-        }).join('')}
       </div>
     </div>`;
 }
