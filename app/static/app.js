@@ -730,12 +730,41 @@ async function renderSources(){
 }
 
 // ---------- settings ----------
+function renderScanTicker(s){
+  if(s.state !== 'running') return '';
+  let sourceStats = {};
+  try{ sourceStats = JSON.parse(s.source_stats || '{}'); }catch(e){}
+  const names = Object.keys(sourceStats);
+  const recent = names.slice(-6).reverse();
+  const total = s.sources_total || 0;
+  const done = s.sources_done || 0;
+  const pct = total ? Math.min(100, Math.round(done/total*100)) : 0;
+  return `
+    <div class="scan-ticker-box">
+      <div class="scan-ticker-head">
+        <span class="scan-pulse-dot"></span>
+        <span class="scan-current">${s.current_source ? `Checking <strong>${escapeHtml(s.current_source)}</strong>&hellip;` : 'Starting scan&hellip;'}</span>
+        <span class="scan-count">${done}/${total || '?'}</span>
+      </div>
+      <div class="scan-progress-track"><div class="scan-progress-fill" style="width:${pct}%"></div></div>
+      <div class="scan-ticker-list">
+        ${recent.map(name => {
+          const st = sourceStats[name];
+          const ok = st && st.status === 'ok';
+          return `<div class="scan-ticker-item ${ok ? 'ok' : 'fail'}"><span>${ok ? '✓' : '✕'}</span> ${escapeHtml(name)}</div>`;
+        }).join('')}
+      </div>
+    </div>`;
+}
 function renderCrawlStatusBox(targetId, s){
   const el = document.getElementById(targetId);
   if(!el) return;
-  const working = s.state === 'running';
+  if(targetId === 'dashScanTicker'){
+    el.innerHTML = renderScanTicker(s);
+    return;
+  }
   el.innerHTML = `
-    ${working ? '<div class="agent-working">🔄 Agent is working — checking 17 sources, this can take 1-2 minutes...</div>' : ''}
+    ${renderScanTicker(s)}
     <div class="row"><span>State</span><span>${escapeHtml(s.state)}</span></div>
     <div class="row"><span>Tenders in feed</span><span>${s.tenders_in_feed}</span></div>
     <div class="row"><span>Jobs in feed</span><span>${s.jobs_in_feed}</span></div>
@@ -749,6 +778,11 @@ async function loadCrawlStatus(targetId){
   targetId = targetId || 'crawlStatusBox';
   const s = await fetch('/api/crawl/status', { cache: 'no-store' }).then(r => r.json());
   renderCrawlStatusBox(targetId, s);
+  // Keep the dashboard's lean ticker in sync too, whichever button was clicked —
+  // so clicking "Run Crawl Now" from Settings still lights up the Dashboard's
+  // ticker if that's what's visible, and vice versa.
+  if(targetId !== 'dashScanTicker') renderCrawlStatusBox('dashScanTicker', s);
+  if(targetId !== 'crawlStatusBox') renderCrawlStatusBox('crawlStatusBox', s);
   return s;
 }
 async function triggerCrawl(btnId, statusTargetId){
@@ -772,7 +806,9 @@ async function pollUntilDone(btnId, statusTargetId, defaultLabel){
   if(s.state === 'running'){
     btn.disabled = true;
     btn.textContent = '🔄 Agent is working...';
-    setTimeout(() => pollUntilDone(btnId, statusTargetId, defaultLabel), 3000);
+    // Fast polling while running — this is what makes the live ticker feel
+    // lively; it settles back to normal the moment the scan finishes.
+    setTimeout(() => pollUntilDone(btnId, statusTargetId, defaultLabel), 800);
   } else {
     btn.disabled = false;
     btn.textContent = s.error ? `${defaultLabel} (last run had an error)` : defaultLabel;
