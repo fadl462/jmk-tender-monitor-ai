@@ -113,7 +113,7 @@ function switchSection(section){
   }
   if(section === 'opportunities') loadAllOpportunities();
   if(section === 'pipeline') loadPipeline();
-  if(section === 'settings'){ loadCrawlStatus('crawlStatusBox'); loadSettings(); }
+  if(section === 'settings'){ loadCrawlStatus('crawlStatusBox'); loadSettings(); loadTrafficStats(); }
   if(section === 'sources') renderSources();
 }
 
@@ -864,6 +864,34 @@ async function loadNotifications(){
 function toggleNotifDropdown(){
   const dd = document.getElementById('notifDropdown');
   if(dd) dd.classList.toggle('open');
+}
+
+let trafficChartInstance = null;
+async function loadTrafficStats(){
+  let data = {};
+  try{
+    data = await fetch('/api/analytics/traffic', { cache: 'no-store' }).then(r => r.json());
+  }catch(e){ console.error('traffic stats failed', e); return; }
+
+  const setText = (id, val) => { const el = document.getElementById(id); if(el) el.textContent = val; };
+  setText('usageToday', data.visitsToday ?? 0);
+  setText('usageUniqueToday', data.uniqueTodayApprox ?? 0);
+  setText('usageWeek', data.visitsThisWeek ?? 0);
+  setText('usageAllTime', data.visitsAllTime ?? 0);
+
+  if(typeof Chart === 'undefined') return;
+  const canvas = document.getElementById('chartTraffic');
+  if(!canvas) return;
+  if(trafficChartInstance) trafficChartInstance.destroy();
+  const days = data.last14Days || [];
+  trafficChartInstance = new Chart(canvas, {
+    type: 'line',
+    data: {
+      labels: days.map(d => shortDate(d.date)),
+      datasets: [{ data: days.map(d => d.count), borderColor: CHART_COLORS[0], backgroundColor: 'transparent', tension: 0.3, pointRadius: 2 }]
+    },
+    options: { plugins:{ legend:{ display:false } }, scales:{ x:{ ticks:{ font:{size:10} } }, y:{ beginAtZero:true, ticks:{ precision:0 } } } }
+  });
 }
 
 // ---------- init ----------
