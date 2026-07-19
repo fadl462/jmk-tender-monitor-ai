@@ -76,6 +76,9 @@ class CrawlStatus(Base):
     email_note = Column(Text, default="")
     error = Column(Text, default="")
     source_stats = Column(Text, default="{}")  # JSON: {source_name: {last_checked, new_today, status}}
+    current_source = Column(String, default="")   # source name being checked right now, "" when idle
+    sources_done = Column(Integer, default=0)      # how many sources have been checked so far this run
+    sources_total = Column(Integer, default=0)     # how many will be checked this run (grows if international kicks in)
 
 
 class AppSetting(Base):
