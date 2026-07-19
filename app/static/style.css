@@ -319,6 +319,7 @@ display:none; position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:55;
 
 /* ---------- Settings forms ---------- */
 .settings-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px 16px;}
+.usage-num{font-family:'Fraunces',serif;font-size:26px;font-weight:600;color:var(--navy);}
 .checkbox-row{display:flex;align-items:center;gap:8px;margin-bottom:10px;font-size:13px;}
 .checkbox-row input[type=checkbox]{width:16px;height:16px;}
 .checkbox-row label{cursor:pointer;}
