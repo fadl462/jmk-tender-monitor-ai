@@ -28,6 +28,7 @@ links back to its source so a person makes the final call.
 """
 import re
 import time
+import json
 import hashlib
 from datetime import datetime, timedelta
 from urllib.parse import urljoin
@@ -326,9 +327,24 @@ def _exists(db: Session, item_id: str) -> bool:
     return db.query(models.Opportunity.id).filter(models.Opportunity.id == item_id).first() is not None
 
 
-def crawl_tenders(db: Session, new_items: list, source_stats: dict, db_settings: dict):
+def _touch_progress(db: Session, **fields):
+    """Writes live scan progress to the CrawlStatus singleton row mid-run,
+    so a person watching the Settings/Dashboard page sees each source get
+    checked in near-real-time instead of only finding out once the whole
+    crawl has finished."""
+    status = db.query(models.CrawlStatus).filter(models.CrawlStatus.id == "singleton").first()
+    if not status:
+        status = models.CrawlStatus(id="singleton")
+        db.add(status)
+    for key, value in fields.items():
+        setattr(status, key, value)
+    db.commit()
+
+
+def crawl_tenders(db: Session, new_items: list, source_stats: dict, db_settings: dict, progress: dict):
     threshold = db_settings.get("match_threshold", 40)
     for source in TENDER_SOURCES:
+        _touch_progress(db, current_source=source["name"])
         print(f"[tenders] Checking {source['name']}...")
         html = fetch_html(source["url"])
         stat = {"last_checked": datetime.utcnow().isoformat(), "new_today": 0,
@@ -350,15 +366,18 @@ def crawl_tenders(db: Session, new_items: list, source_stats: dict, db_settings:
             new_items.append(record)
             stat["new_today"] += 1
         source_stats[source["name"]] = stat
+        progress["done"] += 1
+        _touch_progress(db, sources_done=progress["done"], source_stats=json.dumps(source_stats))
         time.sleep(0.3)
     db.commit()
 
 
-def crawl_jobs(db: Session, new_items: list, source_stats: dict, db_settings: dict):
+def crawl_jobs(db: Session, new_items: list, source_stats: dict, db_settings: dict, progress: dict):
     threshold = db_settings.get("match_threshold", 40)
     min_ghana_job_results = db_settings.get("min_ghana_job_results", 5)
     ghana_qualifying = 0
     for source in GHANA_JOB_SOURCES:
+        _touch_progress(db, current_source=source["name"])
         print(f"[jobs:ghana] Checking {source['name']}...")
         html = fetch_html(source["url"])
         stat = {"last_checked": datetime.utcnow().isoformat(), "new_today": 0,
@@ -381,6 +400,8 @@ def crawl_jobs(db: Session, new_items: list, source_stats: dict, db_settings: di
             new_items.append(record)
             stat["new_today"] += 1
         source_stats[source["name"]] = stat
+        progress["done"] += 1
+        _touch_progress(db, sources_done=progress["done"], source_stats=json.dumps(source_stats))
         time.sleep(0.3)
     db.commit()
 
@@ -388,7 +409,10 @@ def crawl_jobs(db: Session, new_items: list, source_stats: dict, db_settings: di
 
     if ghana_qualifying < min_ghana_job_results:
         print(f"[jobs] Below {min_ghana_job_results} — checking international sources too.")
+        progress["total"] += len(INTERNATIONAL_JOB_SOURCES)
+        _touch_progress(db, sources_total=progress["total"])
         for source in INTERNATIONAL_JOB_SOURCES:
+            _touch_progress(db, current_source=source["name"])
             print(f"[jobs:intl] Checking {source['name']}...")
             html = fetch_html(source["url"])
             stat = {"last_checked": datetime.utcnow().isoformat(), "new_today": 0,
@@ -410,6 +434,8 @@ def crawl_jobs(db: Session, new_items: list, source_stats: dict, db_settings: di
                 new_items.append(record)
                 stat["new_today"] += 1
             source_stats[source["name"]] = stat
+            progress["done"] += 1
+            _touch_progress(db, sources_done=progress["done"], source_stats=json.dumps(source_stats))
             time.sleep(0.3)
         db.commit()
     else:
@@ -580,8 +606,12 @@ def run_crawl(db: Session):
 
     new_items = []
     source_stats = {}
-    crawl_tenders(db, new_items, source_stats, db_settings)
-    crawl_jobs(db, new_items, source_stats, db_settings)
+    progress = {"done": 0, "total": len(TENDER_SOURCES) + len(GHANA_JOB_SOURCES)}
+    _touch_progress(db, current_source="", sources_done=0, sources_total=progress["total"], source_stats="{}")
+
+    crawl_tenders(db, new_items, source_stats, db_settings, progress)
+    crawl_jobs(db, new_items, source_stats, db_settings, progress)
+    _touch_progress(db, current_source="")  # scan finished — nothing "currently checking" anymore
     prune_old(db, db_settings)
     generate_notifications(db, new_items, db_settings)
 
