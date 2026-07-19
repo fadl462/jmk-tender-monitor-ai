@@ -75,6 +75,9 @@ class CrawlStatusOut(BaseModel):
     email_note: str = ""
     error: str = ""
     source_stats: str = "{}"
+    current_source: str = ""
+    sources_done: int = 0
+    sources_total: int = 0
 
     class Config:
         from_attributes = True
@@ -106,6 +109,8 @@ class AppSettingsOut(BaseModel):
 
     theme_default: str
 
+    access_password_set: bool
+
     extra_sector_keywords: Dict[str, str]   # sector -> comma-separated extra keywords
     extra_role_keywords: str                 # comma-separated
     extra_negative_keywords: str              # comma-separated
@@ -132,6 +137,8 @@ class AppSettingsIn(BaseModel):
     notify_scan_complete: Optional[bool] = None
 
     theme_default: Optional[str] = None
+
+    access_password: Optional[str] = None  # only written if non-empty
 
     extra_sector_keywords: Optional[Dict[str, str]] = None
     extra_role_keywords: Optional[str] = None
