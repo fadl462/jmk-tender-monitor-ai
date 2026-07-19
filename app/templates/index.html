@@ -6,7 +6,7 @@
 <title>JMK Tender Monitor AI</title>
 <link rel="icon" type="image/png" href="/static/jmk-logo.png">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/tabler-icons/3.44.0/tabler-icons.min.css">
-<link rel="stylesheet" href="/static/style.css?v=11">
+<link rel="stylesheet" href="/static/style.css?v=15">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 </head>
 <body>
@@ -195,6 +195,7 @@
         <div id="quickFilterChip"></div>
         <div class="panel">
           <div class="toolbar">
+            <input type="text" id="oppSearch" placeholder="Search title, organization, sector...">
             <select id="filterKind"><option value="">All types</option><option value="tender">Tenders</option><option value="job">Jobs</option></select>
             <select id="filterSector"></select>
             <button class="btn accent" id="refreshOppBtn">Refresh</button>
@@ -395,6 +396,6 @@
   window.JMK_STATUSES = {{ statuses | tojson }};
   window.JMK_CRON_SECRET = {{ cron_secret | tojson }};
 </script>
-<script src="/static/app.js?v=11"></script>
+<script src="/static/app.js?v=15"></script>
 </body>
 </html>
