@@ -96,3 +96,17 @@ class Notification(Base):
     dedup_key = Column(String, default="")       # prevents duplicate alerts across runs
     is_read = Column(Integer, default=0)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class PageVisit(Base):
+    """Lightweight built-in traffic log — no login system exists, so this
+    can't identify named users, just how often and when the dashboard gets
+    opened. ip_hash is a one-way hash, not the raw IP, kept only to give a
+    rough same-day 'how many different people' estimate."""
+    __tablename__ = "page_visits"
+
+    id = Column(String, primary_key=True, default=gen_id)
+    path = Column(String, default="")
+    ip_hash = Column(String, default="")
+    user_agent = Column(String, default="")
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
